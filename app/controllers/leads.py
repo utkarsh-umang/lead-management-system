@@ -44,6 +44,8 @@ async def list_leads(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     search: str | None = Query(default=None),
+    source: str | None = Query(default=None),
+    has_email: bool | None = Query(default=None),
 ) -> LeadPage:
     query = select(MasterLead)
     count_query = select(func.count()).select_from(MasterLead)
@@ -54,6 +56,18 @@ async def list_leads(
             MasterLead.youtube_channel_name.ilike(pattern),
             MasterLead.email.ilike(pattern),
         )
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    if source:
+        source_subquery = (
+            select(LeadSource.lead_id).join(Batch, LeadSource.batch_id == Batch.id).where(Batch.source == source)
+        )
+        query = query.where(MasterLead.id.in_(source_subquery))
+        count_query = count_query.where(MasterLead.id.in_(source_subquery))
+
+    if has_email is not None:
+        condition = MasterLead.email.is_not(None) if has_email else MasterLead.email.is_(None)
         query = query.where(condition)
         count_query = count_query.where(condition)
 

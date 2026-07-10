@@ -58,6 +58,8 @@ async def run_ingestion(
             batch.row_count_new_leads += 1
         else:
             batch.row_count_merged += 1
+        if canonical.get("email"):
+            batch.row_count_with_email += 1
 
     batch.status = "completed"
     session.add(batch)

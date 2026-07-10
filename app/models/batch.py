@@ -25,3 +25,9 @@ class Batch(Base, table=True):
     row_count_quarantined: int = Field(default=0)
     row_count_new_leads: int = Field(default=0)
     row_count_merged: int = Field(default=0)
+    # Snapshot at ingestion time — deliberately NOT the same question as
+    # "how many leads from this source have email right now" (master_leads
+    # can change later once an enricher like the email finder writes back).
+    # This stays a fixed historical fact about what this specific upload
+    # actually contained.
+    row_count_with_email: int = Field(default=0)
