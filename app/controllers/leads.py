@@ -8,7 +8,7 @@ from app.core.db_dep import DbSession
 from app.models.batch import Batch
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
-from app.schemas.lead import LeadOut, LeadPage, LeadStats, SourceCount
+from app.schemas.lead import LeadOut, LeadPage, LeadStats, SourceCount, SourceFileOut
 
 router = APIRouter()
 
@@ -82,18 +82,29 @@ async def list_leads(
 
     lead_ids = [lead.id for lead in leads]
     sources_by_lead: dict = {lid: [] for lid in lead_ids}
+    # Keyed by (lead_id, batch_id) so a batch that contributed more than one
+    # row to the same lead (internal duplicates within that upload) only
+    # shows up once — one entry per distinct upload, not per row.
+    source_files_by_lead: dict = {lid: {} for lid in lead_ids}
     if lead_ids:
         rows = await session.execute(
-            select(LeadSource.lead_id, Batch.source)
+            select(LeadSource.lead_id, Batch.id, Batch.source, Batch.filename, Batch.created_at)
             .join(Batch, LeadSource.batch_id == Batch.id)
             .where(LeadSource.lead_id.in_(lead_ids))
         )
-        for lead_id, source in rows.all():
+        for lead_id, batch_id, source, filename, uploaded_at in rows.all():
             if source not in sources_by_lead[lead_id]:
                 sources_by_lead[lead_id].append(source)
+            source_files_by_lead[lead_id][batch_id] = SourceFileOut(
+                source=source, filename=filename, uploaded_at=uploaded_at
+            )
 
     items = [
-        LeadOut(**lead.model_dump(), sources=sources_by_lead.get(lead.id, []))
+        LeadOut(
+            **lead.model_dump(),
+            sources=sources_by_lead.get(lead.id, []),
+            source_files=list(source_files_by_lead.get(lead.id, {}).values()),
+        )
         for lead in leads
     ]
     return LeadPage(items=items, total=total, page=page, page_size=page_size)

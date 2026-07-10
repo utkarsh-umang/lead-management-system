@@ -6,6 +6,16 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 
+class SourceFileOut(BaseModel):
+    """One batch/CSV that contributed to a lead — the CSV filename is what
+    actually distinguishes uploads within the same source, since a source
+    label like "youtube-tool" can have many uploads over time."""
+
+    source: str
+    filename: str
+    uploaded_at: datetime
+
+
 class LeadOut(BaseModel):
     id: uuid.UUID
     email: str | None
@@ -31,6 +41,7 @@ class LeadOut(BaseModel):
     youtube_last_upload_date: date | None
     created_at: datetime
     sources: list[str]
+    source_files: list[SourceFileOut]
 
 
 class LeadPage(BaseModel):
