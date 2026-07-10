@@ -1,6 +1,9 @@
-# Local dev infrastructure — Postgres, Redis
-# Run: task dev:infra
-# Uses .env for credentials (must match app config)
+# Full stack — Postgres, Redis, backend (FastAPI), frontend (enlead).
+# Run: docker compose up --build
+#
+# Assumes enlead is cloned as a SIBLING directory to this repo
+# (~/my_projects/enlead next to ~/my_projects/lead-management-system) —
+# the frontend service's build context is a relative ../enlead path.
 #
 # Host port 5434 (not 5432) — this machine already runs Postgres containers
 # for other projects on 5432/5433/54332; 5434 avoids the collision.
@@ -36,6 +39,45 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lms-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override host-mode values — inside the compose network, Postgres/Redis
+      # are reachable by service name, not localhost.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../enlead
+      dockerfile: Dockerfile
+    container_name: lms-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ../enlead:/app
+      - enlead_node_modules:/app/node_modules
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   redis_data:
+  enlead_node_modules:

@@ -841,6 +841,18 @@ files = [
 cli = ["click (>=5.0)"]
 
 [[package]]
+name = "python-multipart"
+version = "0.0.32"
+description = "A streaming multipart parser for Python"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "python_multipart-0.0.32-py3-none-any.whl", hash = "sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23"},
+    {file = "python_multipart-0.0.32.tar.gz", hash = "sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e"},
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 description = "YAML parser and emitter for Python"
@@ -1466,4 +1478,4 @@ gcp = []
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "d4955ac83be04dc424903d180254d8f8d84fde2cbf925efe37f94c598a7552d1"
+content-hash = "ff6409c5d036915b90d59c2418f62b9be60763ceee8c5fdc0527ab18cba55670"

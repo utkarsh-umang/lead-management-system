@@ -1,0 +1,56 @@
+"""Batch upload — the fingerprint fast path from Ingestion Pipeline.md.
+A fingerprint miss returns 422: phase 3 (the agentic mapping-drafting loop)
+isn't built yet, so an unknown shape needs a mapping authored by hand."""
+
+import csv
+import io
+
+from fastapi import APIRouter, HTTPException, UploadFile
+from sqlmodel import select
+from starlette import status
+
+from app.core.db_dep import DbSession
+from app.models.batch import Batch
+from app.models.mapping_function import MappingFunction
+from app.schemas.batch import BatchSummary
+from app.services.ingestion import run_ingestion
+from app.services.mapping.fingerprint import compute_fingerprint
+
+router = APIRouter()
+
+
+@router.post("/upload", response_model=BatchSummary)
+async def upload_batch(session: DbSession, file: UploadFile) -> BatchSummary:
+    raw_bytes = await file.read()
+    text = raw_bytes.decode("utf-8-sig")  # -sig strips a BOM if present
+    reader = csv.DictReader(io.StringIO(text))
+    rows = list(reader)
+
+    if not reader.fieldnames:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "CSV has no header row")
+
+    fingerprint = compute_fingerprint(reader.fieldnames)
+    result = await session.execute(
+        select(MappingFunction).where(MappingFunction.fingerprint == fingerprint)
+    )
+    mapping = result.scalars().first()
+
+    if mapping is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unrecognized CSV shape — no registered mapping function for this fingerprint. "
+            "The agentic mapping-drafting layer (phase 3) isn't built yet; "
+            "this shape needs a hand-authored mapping spec.",
+        )
+
+    batch = Batch(
+        source=mapping.source_label,
+        filename=file.filename or "unknown.csv",
+        mapping_function_id=mapping.id,
+        status="processing",
+    )
+    session.add(batch)
+    await session.flush()
+
+    batch = await run_ingestion(session, batch, mapping.mapping_spec, rows)
+    return BatchSummary(**batch.model_dump())
