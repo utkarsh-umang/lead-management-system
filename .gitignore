@@ -22,3 +22,4 @@ logs
 *.njsproj
 *.sln
 *.sw?
+.gstack/
