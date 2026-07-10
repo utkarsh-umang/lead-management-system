@@ -1,0 +1,67 @@
+# enlead-be Taskfile
+# Install: https://taskfile.dev/installation
+# Usage: task <task>  e.g. task up
+
+version: "3"
+
+tasks:
+  # ── Dev (Docker infra) ──
+  dev:infra:
+    desc: Start Postgres + Redis (Docker)
+    cmds:
+      - docker compose up -d
+
+  dev:down:
+    desc: Stop Docker infra
+    cmds:
+      - docker compose down
+
+  # ── Env ──
+  env:create:
+    desc: Create .env from .env.example (run this first)
+    cmds:
+      - |
+        if [ -f .env ]; then
+          echo ".env already exists"
+        else
+          cp .env.example .env
+          echo "Created .env — edit it with your values"
+        fi
+
+  # ── App ──
+  install:
+    desc: Install Python deps (Poetry)
+    cmds:
+      - poetry install
+
+  migrate:
+    desc: Run Postgres migrations (alembic upgrade head)
+    cmds:
+      - poetry run alembic upgrade head
+
+  revision:
+    desc: "Create new migration"
+    cmds:
+      - poetry run alembic revision --autogenerate -m update
+
+  up:
+    desc: Migrate + start uvicorn (full backend startup)
+    deps:
+      - migrate
+    cmds:
+      - poetry run uvicorn main:app --reload
+
+  test:
+    desc: Run tests
+    cmds:
+      - poetry run pytest -v
+
+  lint:
+    desc: Lint (ruff)
+    cmds:
+      - poetry run ruff check app
+
+  format:
+    desc: Format (ruff)
+    cmds:
+      - poetry run ruff format app

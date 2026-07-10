@@ -1,0 +1,41 @@
+# Local dev infrastructure — Postgres, Redis
+# Run: task dev:infra
+# Uses .env for credentials (must match app config)
+#
+# Host port 5434 (not 5432) — this machine already runs Postgres containers
+# for other projects on 5432/5433/54332; 5434 avoids the collision.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: enlead-be-postgres
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-enlead}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: enlead-be-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
