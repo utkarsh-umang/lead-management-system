@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "enlead-be"
+name = "lead-management-system"
 version = "0.1.0"
 description = "Lead Management System backend — CSV ingestion, canonical lead store, enrichment ledger"
 authors = []

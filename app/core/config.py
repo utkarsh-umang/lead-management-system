@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5434
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_DB: str = "enlead"
+    POSTGRES_DB: str = "lms"
 
     # ── Redis ──
     REDIS_HOST: str = "localhost"

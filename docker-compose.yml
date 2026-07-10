@@ -8,13 +8,13 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: enlead-be-postgres
+    container_name: lms-postgres
     ports:
       - "5434:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-enlead}
+      POSTGRES_DB: ${POSTGRES_DB:-lms}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +25,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: enlead-be-redis
+    container_name: lms-redis
     ports:
       - "6379:6379"
     volumes:

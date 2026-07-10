@@ -1,11 +1,11 @@
-# enlead-be
+# lead-management-system
 
 Lead Management System backend — CSV ingestion, canonical lead store, dedup,
 and the enrichment ledger that the email finder (`ai-agents-service`) reads
 and writes against. Design doc: `scalebrandslab/lms/Lead Management System.md`
 in Obsidian.
 
-Frontend lives in the separate `enlead-fe` repo and talks to this API over
+Frontend lives in the separate `enlead` repo and talks to this API over
 HTTP — this is not a monorepo.
 
 ## Quick start

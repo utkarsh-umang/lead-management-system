@@ -24,7 +24,7 @@ def add_request_id_middleware(app: FastAPI) -> None:
 
 
 app = FastAPI(
-    title="enlead-be",
+    title="lead-management-system",
     version="0.1.0",
     openapi_url="/openapi.json",
 )
