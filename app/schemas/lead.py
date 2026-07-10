@@ -38,3 +38,15 @@ class LeadPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class SourceCount(BaseModel):
+    source: str
+    lead_count: int
+
+
+class LeadStats(BaseModel):
+    total: int
+    with_email: int
+    without_email: int
+    by_source: list[SourceCount]

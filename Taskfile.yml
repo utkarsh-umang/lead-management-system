@@ -16,6 +16,14 @@ tasks:
     cmds:
       - docker compose down
 
+  # ── Full stack ──
+  restart:
+    desc: "One command to reliably restart everything: Postgres, Redis, backend, frontend"
+    cmds:
+      - docker compose up --build -d
+      - echo "Backend  http://localhost:8000"
+      - echo "Frontend http://localhost:3000"
+
   # ── Env ──
   env:create:
     desc: Create .env from .env.example (run this first)

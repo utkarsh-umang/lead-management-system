@@ -8,9 +8,34 @@ from app.core.db_dep import DbSession
 from app.models.batch import Batch
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
-from app.schemas.lead import LeadOut, LeadPage
+from app.schemas.lead import LeadOut, LeadPage, LeadStats, SourceCount
 
 router = APIRouter()
+
+
+@router.get("/stats", response_model=LeadStats, operation_id="get_lead_stats")
+async def get_lead_stats(session: DbSession) -> LeadStats:
+    total = (await session.execute(select(func.count()).select_from(MasterLead))).scalar_one()
+    with_email = (
+        await session.execute(
+            select(func.count()).select_from(MasterLead).where(MasterLead.email.is_not(None))
+        )
+    ).scalar_one()
+
+    rows = await session.execute(
+        select(Batch.source, func.count(func.distinct(LeadSource.lead_id)))
+        .join(LeadSource, LeadSource.batch_id == Batch.id)
+        .group_by(Batch.source)
+        .order_by(func.count(func.distinct(LeadSource.lead_id)).desc())
+    )
+    by_source = [SourceCount(source=source, lead_count=count) for source, count in rows.all()]
+
+    return LeadStats(
+        total=total,
+        with_email=with_email,
+        without_email=total - with_email,
+        by_source=by_source,
+    )
 
 
 @router.get("", response_model=LeadPage, operation_id="list_leads")
