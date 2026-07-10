@@ -1,8 +1,11 @@
 """Read access to the master table — paginated, with optional search."""
 
-from fastapi import APIRouter, Query
-from sqlalchemy import func, or_
+import uuid
+
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import delete, func, or_
 from sqlmodel import select
+from starlette import status
 
 from app.core.db_dep import DbSession
 from app.models.batch import Batch
@@ -108,3 +111,21 @@ async def list_leads(
         for lead in leads
     ]
     return LeadPage(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="delete_lead")
+async def delete_lead(session: DbSession, lead_id: uuid.UUID) -> None:
+    lead = await session.get(MasterLead, lead_id)
+    if lead is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Lead {lead_id} not found")
+
+    # lead_sources rows reference this lead with no ON DELETE CASCADE at the
+    # DB level — delete them first or the foreign key blocks the delete.
+    # raw_rows are left untouched: they're the historical record of what
+    # was actually uploaded, independent of whether a canonical lead
+    # currently exists for them. Batch counts (row_count_new_leads etc.)
+    # are also left as-is — they're a fixed fact about what happened during
+    # that ingestion, not something a later deletion should retroactively
+    # rewrite.
+    await session.execute(delete(LeadSource).where(LeadSource.lead_id == lead_id))
+    await session.delete(lead)
