@@ -19,7 +19,7 @@ from app.services.mapping.fingerprint import compute_fingerprint
 router = APIRouter()
 
 
-@router.post("/upload", response_model=BatchSummary)
+@router.post("/upload", response_model=BatchSummary, operation_id="upload_batch")
 async def upload_batch(session: DbSession, file: UploadFile) -> BatchSummary:
     raw_bytes = await file.read()
     text = raw_bytes.decode("utf-8-sig")  # -sig strips a BOM if present
