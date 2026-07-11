@@ -1,7 +1,7 @@
 """Export request/response schemas."""
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -32,3 +32,24 @@ class ExportCreateIn(ExportSelection):
     year: int = Field(ge=2020, le=2100)
     month: int = Field(ge=1, le=12)
     include_already_exported: bool = False
+
+
+class ExportOut(BaseModel):
+    id: uuid.UUID
+    destination: str
+    scheduled_month: date
+    lead_count: int
+    created_at: datetime
+
+
+class ExportLeadItem(BaseModel):
+    lead_id: uuid.UUID
+    youtube_channel_name: str | None
+    email: str | None
+
+
+class ExportLeadsPage(BaseModel):
+    items: list[ExportLeadItem]
+    total: int
+    page: int
+    page_size: int

@@ -17,7 +17,14 @@ from app.models.batch import Batch
 from app.models.export import Export, ExportLead
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
-from app.schemas.export import ExportCreateIn, ExportPreviewOut, ExportSelection
+from app.schemas.export import (
+    ExportCreateIn,
+    ExportLeadItem,
+    ExportLeadsPage,
+    ExportOut,
+    ExportPreviewOut,
+    ExportSelection,
+)
 
 router = APIRouter()
 
@@ -69,6 +76,58 @@ async def _already_exported_ids(session, lead_ids: list[uuid.UUID]) -> dict[uuid
         .group_by(ExportLead.lead_id)
     )
     return dict(rows.all())
+
+
+@router.get("", response_model=list[ExportOut], operation_id="list_exports")
+async def list_exports(session: DbSession) -> list[ExportOut]:
+    """Every export event, newest first — the contact system of record."""
+    rows = (
+        (await session.execute(select(Export).order_by(Export.created_at.desc()))).scalars().all()
+    )
+    return [ExportOut(**e.model_dump()) for e in rows]
+
+
+@router.get("/{export_id}/leads", response_model=ExportLeadsPage, operation_id="get_export_leads")
+async def get_export_leads(
+    session: DbSession,
+    export_id: uuid.UUID,
+    page: int = 1,
+    page_size: int = 25,
+) -> ExportLeadsPage:
+    """The member leads of one export event. Paginated — a
+    select-all-matching export can hold thousands. Leads deleted since the
+    export simply drop out of this view (the event's lead_count keeps the
+    historical number)."""
+    export = await session.get(Export, export_id)
+    if export is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Export {export_id} not found")
+
+    total = (
+        await session.execute(
+            select(func.count())
+            .select_from(ExportLead)
+            .join(MasterLead, MasterLead.id == ExportLead.lead_id)
+            .where(ExportLead.export_id == export_id)
+        )
+    ).scalar_one()
+
+    rows = await session.execute(
+        select(MasterLead.id, MasterLead.youtube_channel_name, MasterLead.email)
+        .join(ExportLead, ExportLead.lead_id == MasterLead.id)
+        .where(ExportLead.export_id == export_id)
+        .order_by(MasterLead.youtube_channel_name)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return ExportLeadsPage(
+        items=[
+            ExportLeadItem(lead_id=lid, youtube_channel_name=name, email=email)
+            for lid, name, email in rows.all()
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("/preview", response_model=ExportPreviewOut, operation_id="preview_export")

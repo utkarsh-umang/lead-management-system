@@ -71,6 +71,10 @@ class LeadPage(BaseModel):
 class SourceCount(BaseModel):
     source: str
     lead_count: int
+    # Upload-level context so the Dashboard list answers "how much raw
+    # volume, across how many files" without a click-through.
+    total_rows_uploaded: int
+    upload_count: int
 
 
 class LeadStats(BaseModel):

@@ -42,7 +42,26 @@ async def get_lead_stats(session: DbSession) -> LeadStats:
         .group_by(Batch.source)
         .order_by(func.count(func.distinct(LeadSource.lead_id)).desc())
     )
-    by_source = [SourceCount(source=source, lead_count=count) for source, count in rows.all()]
+    lead_counts = rows.all()
+
+    # Upload-level aggregates come from batches alone — joining them into
+    # the lead-count query above would fan out rows and inflate the sums.
+    upload_rows = await session.execute(
+        select(Batch.source, func.sum(Batch.row_count_raw), func.count(Batch.id)).group_by(
+            Batch.source
+        )
+    )
+    uploads_by_source = {source: (rows_uploaded, uploads) for source, rows_uploaded, uploads in upload_rows.all()}
+
+    by_source = [
+        SourceCount(
+            source=source,
+            lead_count=count,
+            total_rows_uploaded=uploads_by_source.get(source, (0, 0))[0],
+            upload_count=uploads_by_source.get(source, (0, 0))[1],
+        )
+        for source, count in lead_counts
+    ]
 
     return LeadStats(
         total=total,
