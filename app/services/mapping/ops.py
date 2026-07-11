@@ -15,6 +15,8 @@ import re
 from datetime import date, datetime
 from urllib.parse import urlparse
 
+from app.services.mapping.email_junk import is_junk_email
+
 # Known not-found sentinels tools use instead of leaving a cell blank.
 _NULL_SENTINELS = {"", "x", "n/a", "na", "none", "null", "-"}
 
@@ -87,11 +89,17 @@ def datetime_parse(value: str | None, fmt: str = "%Y-%m-%d %H:%M UTC", **_args) 
 def email_or_null(value: str | None, **_args) -> str | None:
     """Normalize known not-found sentinels to None; anything left that
     isn't email-shaped (e.g. a name that ended up in the email column) is
-    also None rather than kept as a wrong value."""
+    also None rather than kept as a wrong value. Email-shaped junk
+    (placeholders, vendor addresses, system mailboxes — see email_junk.py)
+    is rejected the same way: NULL in canonical, original preserved in
+    raw_rows."""
     v = text(value)
     if v is None:
         return None
-    return v if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v) else None
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+        return None
+    v = v.lower()
+    return None if is_junk_email(v) else v
 
 
 def url_or_null(value: str | None, **_args) -> str | None:

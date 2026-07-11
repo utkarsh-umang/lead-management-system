@@ -27,6 +27,7 @@ from app.schemas.enrichment import (
     PauseIn,
 )
 from app.services import enrichment_signals as signals
+from app.services.mapping.email_junk import is_junk_email
 
 router = APIRouter()
 
@@ -225,6 +226,13 @@ async def post_enrichment_result(session: DbSession, body: EnrichmentResultIn) -
     lead = await session.get(MasterLead, body.lead_id)
     if lead is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Lead {body.lead_id} not found")
+
+    # Last line of defense: the store never accepts junk, no matter which
+    # enricher sends it. A junk "found" (placeholder/vendor/system mailbox
+    # — see email_junk.py) is recorded as not_found, so the lead correctly
+    # stays escalatable rather than looking done with a garbage email.
+    if body.status == "found" and body.value and is_junk_email(body.value.lower()):
+        body = body.model_copy(update={"status": "not_found", "value": None, "confidence": None})
 
     session.add(
         EnrichmentAttempt(
