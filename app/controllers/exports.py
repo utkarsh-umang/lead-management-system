@@ -1,0 +1,142 @@
+"""Export selected leads for an Instantly campaign, recording the contact
+event (which leads, scheduled for which month) as a system of record."""
+
+import csv
+import io
+import uuid
+from datetime import date
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, or_
+from sqlmodel import select
+from starlette import status
+
+from app.core.db_dep import DbSession
+from app.models.batch import Batch
+from app.models.export import Export, ExportLead
+from app.models.lead_source import LeadSource
+from app.models.master_lead import MasterLead
+from app.schemas.export import ExportCreateIn, ExportPreviewOut, ExportSelection
+
+router = APIRouter()
+
+# Instantly maps CSV columns on import; these headers match its standard
+# field names so the mapping step is zero-effort. first_name/company_name
+# both carry the channel name — it's the only name-like field a YouTube
+# lead has, and {{firstName}} is the variable templates actually use.
+CSV_HEADERS = ["email", "first_name", "company_name", "website", "youtube_url", "niche", "country"]
+
+
+def _selection_query(selection: ExportSelection):
+    """Resolve a selection to a MasterLead query — same filter semantics as
+    GET /leads, so what you see filtered is exactly what exports."""
+    query = select(MasterLead)
+
+    if selection.lead_ids is not None:
+        return query.where(MasterLead.id.in_(selection.lead_ids))
+
+    if selection.search:
+        pattern = f"%{selection.search}%"
+        query = query.where(
+            or_(
+                MasterLead.youtube_channel_name.ilike(pattern),
+                MasterLead.email.ilike(pattern),
+            )
+        )
+    if selection.source:
+        source_subquery = (
+            select(LeadSource.lead_id)
+            .join(Batch, LeadSource.batch_id == Batch.id)
+            .where(Batch.source == selection.source)
+        )
+        query = query.where(MasterLead.id.in_(source_subquery))
+    if selection.has_email is not None:
+        query = query.where(
+            MasterLead.email.is_not(None) if selection.has_email else MasterLead.email.is_(None)
+        )
+    return query
+
+
+async def _already_exported_ids(session, lead_ids: list[uuid.UUID]) -> dict[uuid.UUID, date]:
+    """lead_id -> most recent scheduled_month, for leads exported before."""
+    if not lead_ids:
+        return {}
+    rows = await session.execute(
+        select(ExportLead.lead_id, func.max(Export.scheduled_month))
+        .join(Export, ExportLead.export_id == Export.id)
+        .where(ExportLead.lead_id.in_(lead_ids))
+        .group_by(ExportLead.lead_id)
+    )
+    return dict(rows.all())
+
+
+@router.post("/preview", response_model=ExportPreviewOut, operation_id="preview_export")
+async def preview_export(session: DbSession, selection: ExportSelection) -> ExportPreviewOut:
+    leads = (await session.execute(_selection_query(selection))).scalars().all()
+    exportable = [lead for lead in leads if lead.email]
+    exported_before = await _already_exported_ids(session, [lead.id for lead in exportable])
+
+    return ExportPreviewOut(
+        total_selected=len(leads),
+        exportable=len(exportable),
+        excluded_no_email=len(leads) - len(exportable),
+        already_exported=len(exported_before),
+        already_exported_last_month=max(exported_before.values()) if exported_before else None,
+    )
+
+
+@router.post("", operation_id="create_export")
+async def create_export(session: DbSession, body: ExportCreateIn) -> StreamingResponse:
+    leads = (await session.execute(_selection_query(body))).scalars().all()
+    exportable = [lead for lead in leads if lead.email]
+
+    if not body.include_already_exported:
+        exported_before = await _already_exported_ids(session, [lead.id for lead in exportable])
+        exportable = [lead for lead in exportable if lead.id not in exported_before]
+
+    if not exportable:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Nothing to export — no selected lead has an email"
+            + ("" if body.include_already_exported else " (or all were already exported)"),
+        )
+
+    scheduled_month = date(body.year, body.month, 1)
+    export = Export(
+        destination="instantly",
+        scheduled_month=scheduled_month,
+        lead_count=len(exportable),
+    )
+    session.add(export)
+    await session.flush()  # need export.id for the join rows
+    for lead in exportable:
+        session.add(ExportLead(export_id=export.id, lead_id=lead.id))
+    # Commit before streaming: the dependency's commit runs in teardown,
+    # after the response body is already on the wire — too late to fail.
+    # The contact record must be durable before the user has the CSV.
+    await session.commit()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(CSV_HEADERS)
+    for lead in exportable:
+        writer.writerow(
+            [
+                lead.email,
+                lead.youtube_channel_name or "",
+                lead.youtube_channel_name or "",
+                lead.website or "",
+                lead.social_youtube or "",
+                lead.niche or "",
+                lead.country or "",
+            ]
+        )
+    buffer.seek(0)
+
+    filename = f"instantly-{scheduled_month:%Y-%m}-{len(exportable)}-leads.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

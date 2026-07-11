@@ -9,6 +9,7 @@ from starlette import status
 
 from app.core.db_dep import DbSession
 from app.models.batch import Batch
+from app.models.export import Export, ExportLead
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
 from app.schemas.lead import LeadOut, LeadPage, LeadStats, SourceCount, SourceFileOut
@@ -89,6 +90,7 @@ async def list_leads(
     # row to the same lead (internal duplicates within that upload) only
     # shows up once — one entry per distinct upload, not per row.
     source_files_by_lead: dict = {lid: {} for lid in lead_ids}
+    last_contacted_by_lead: dict = {}
     if lead_ids:
         rows = await session.execute(
             select(LeadSource.lead_id, Batch.id, Batch.source, Batch.filename, Batch.created_at)
@@ -102,11 +104,20 @@ async def list_leads(
                 source=source, filename=filename, uploaded_at=uploaded_at
             )
 
+        contacted_rows = await session.execute(
+            select(ExportLead.lead_id, func.max(Export.scheduled_month))
+            .join(Export, ExportLead.export_id == Export.id)
+            .where(ExportLead.lead_id.in_(lead_ids))
+            .group_by(ExportLead.lead_id)
+        )
+        last_contacted_by_lead = dict(contacted_rows.all())
+
     items = [
         LeadOut(
             **lead.model_dump(),
             sources=sources_by_lead.get(lead.id, []),
             source_files=list(source_files_by_lead.get(lead.id, {}).values()),
+            last_contacted=last_contacted_by_lead.get(lead.id),
         )
         for lead in leads
     ]
@@ -119,13 +130,14 @@ async def delete_lead(session: DbSession, lead_id: uuid.UUID) -> None:
     if lead is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Lead {lead_id} not found")
 
-    # lead_sources rows reference this lead with no ON DELETE CASCADE at the
-    # DB level — delete them first or the foreign key blocks the delete.
-    # raw_rows are left untouched: they're the historical record of what
-    # was actually uploaded, independent of whether a canonical lead
-    # currently exists for them. Batch counts (row_count_new_leads etc.)
-    # are also left as-is — they're a fixed fact about what happened during
-    # that ingestion, not something a later deletion should retroactively
-    # rewrite.
+    # lead_sources and export_leads rows reference this lead with no
+    # ON DELETE CASCADE at the DB level — delete them first or the foreign
+    # key blocks the delete. raw_rows are left untouched: they're the
+    # historical record of what was actually uploaded, independent of
+    # whether a canonical lead currently exists for them. Batch counts
+    # (row_count_new_leads etc.) and exports.lead_count are also left
+    # as-is — fixed facts about what happened during those events, not
+    # something a later deletion should retroactively rewrite.
     await session.execute(delete(LeadSource).where(LeadSource.lead_id == lead_id))
+    await session.execute(delete(ExportLead).where(ExportLead.lead_id == lead_id))
     await session.delete(lead)

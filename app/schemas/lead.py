@@ -42,6 +42,9 @@ class LeadOut(BaseModel):
     created_at: datetime
     sources: list[str]
     source_files: list[SourceFileOut]
+    # Most recent Instantly export month for this lead (see exports tables) —
+    # null means never contacted.
+    last_contacted: date | None
 
 
 class LeadPage(BaseModel):
