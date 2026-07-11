@@ -15,6 +15,7 @@ from app.models.batch import Batch
 from app.models.mapping_function import MappingFunction
 from app.models.raw_row import RawRow
 from app.schemas.batch import BatchDetail, BatchSummary, QuarantinedRowOut
+from app.services.enrichment_signals import notify_work
 from app.services.ingestion import run_ingestion
 from app.services.mapping.fingerprint import compute_fingerprint
 
@@ -55,6 +56,11 @@ async def upload_batch(session: DbSession, file: UploadFile) -> BatchSummary:
     await session.flush()
 
     batch = await run_ingestion(session, batch, mapping.mapping_spec, rows)
+    # Commit before waking the enrichment long-poll: the woken request
+    # queries in its own session, so uncommitted leads would be invisible
+    # and the wake-up wasted (it would only catch up on the next timeout).
+    await session.commit()
+    notify_work()
     return BatchSummary(**batch.model_dump())
 
 

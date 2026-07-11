@@ -47,3 +47,36 @@ class EnrichmentAttemptOut(BaseModel):
     provider: str | None
     cost_incurred: float | None
     attempted_at: datetime
+
+
+class HeartbeatIn(BaseModel):
+    state: Literal["waiting", "processing", "blocked"]
+    detail: str | None = None
+    in_flight: int = 0
+
+
+class PauseIn(BaseModel):
+    reason: str
+
+
+class EnrichmentStatusOut(BaseModel):
+    """Everything the dashboard panel needs to answer 'what's the finder
+    doing, and can I close my laptop?'"""
+
+    # Worker liveness (from heartbeats; worker_alive = seen recently)
+    worker_state: str | None  # waiting | processing | blocked | None = never seen
+    worker_detail: str | None
+    worker_in_flight: int
+    worker_last_seen_at: datetime | None
+    worker_alive: bool
+
+    # Human-in-the-loop gate
+    paused: bool
+    pause_reason: str | None
+
+    # Queue + progress
+    pending_low: int
+    pending_high: int
+    attempts_last_hour: int
+    attempts_today: int
+    found_today: int
