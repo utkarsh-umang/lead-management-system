@@ -197,7 +197,13 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
         query = (
             select(func.count())
             .select_from(EnrichmentAttempt)
-            .where(EnrichmentAttempt.created_at >= since)
+            .where(
+                EnrichmentAttempt.created_at >= since,
+                # Backfilled ledger rows (imported pre-LMS run history) are
+                # not throughput — counting them makes "tried today" and the
+                # ETA lie on any day a backfill happens.
+                ~EnrichmentAttempt.provider.like("backfill:%"),
+            )
         )
         if only_found:
             query = query.where(EnrichmentAttempt.status == "found")
