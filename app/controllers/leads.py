@@ -12,7 +12,15 @@ from app.models.batch import Batch
 from app.models.export import Export, ExportLead
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
-from app.schemas.lead import LeadOut, LeadPage, LeadStats, SourceCount, SourceFileOut
+from app.models.raw_row import RawRow
+from app.schemas.lead import (
+    LeadOut,
+    LeadPage,
+    LeadRawRowOut,
+    LeadStats,
+    SourceCount,
+    SourceFileOut,
+)
 
 router = APIRouter()
 
@@ -122,6 +130,34 @@ async def list_leads(
         for lead in leads
     ]
     return LeadPage(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/{lead_id}/raw", response_model=list[LeadRawRowOut], operation_id="get_lead_raw_rows")
+async def get_lead_raw_rows(session: DbSession, lead_id: uuid.UUID) -> list[LeadRawRowOut]:
+    """Every original CSV row that ever contributed to this lead, via the
+    lead_sources provenance trail — the untouched pre-mapping values."""
+    lead = await session.get(MasterLead, lead_id)
+    if lead is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Lead {lead_id} not found")
+
+    rows = await session.execute(
+        select(Batch.source, Batch.filename, Batch.created_at, RawRow.row_index, RawRow.raw_data)
+        .select_from(LeadSource)
+        .join(Batch, LeadSource.batch_id == Batch.id)
+        .join(RawRow, LeadSource.row_id == RawRow.id)
+        .where(LeadSource.lead_id == lead_id)
+        .order_by(Batch.created_at)
+    )
+    return [
+        LeadRawRowOut(
+            source=source,
+            filename=filename,
+            uploaded_at=uploaded_at,
+            row_index=row_index,
+            raw_data=raw_data,
+        )
+        for source, filename, uploaded_at, row_index, raw_data in rows.all()
+    ]
 
 
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="delete_lead")

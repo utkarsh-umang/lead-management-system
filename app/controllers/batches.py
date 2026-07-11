@@ -4,6 +4,7 @@ isn't built yet, so an unknown shape needs a mapping authored by hand."""
 
 import csv
 import io
+import uuid
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from sqlmodel import select
@@ -12,7 +13,8 @@ from starlette import status
 from app.core.db_dep import DbSession
 from app.models.batch import Batch
 from app.models.mapping_function import MappingFunction
-from app.schemas.batch import BatchSummary
+from app.models.raw_row import RawRow
+from app.schemas.batch import BatchDetail, BatchSummary, QuarantinedRowOut
 from app.services.ingestion import run_ingestion
 from app.services.mapping.fingerprint import compute_fingerprint
 
@@ -54,3 +56,33 @@ async def upload_batch(session: DbSession, file: UploadFile) -> BatchSummary:
 
     batch = await run_ingestion(session, batch, mapping.mapping_spec, rows)
     return BatchSummary(**batch.model_dump())
+
+
+@router.get("/{batch_id}", response_model=BatchDetail, operation_id="get_batch_detail")
+async def get_batch_detail(session: DbSession, batch_id: uuid.UUID) -> BatchDetail:
+    batch = await session.get(Batch, batch_id)
+    if batch is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Batch {batch_id} not found")
+
+    quarantined = (
+        (
+            await session.execute(
+                select(RawRow)
+                .where(RawRow.batch_id == batch_id, RawRow.validation_status == "quarantined")
+                .order_by(RawRow.row_index)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return BatchDetail(
+        **batch.model_dump(exclude={"mapping_function_id", "source_sheet_url", "updated_at"}),
+        quarantined_rows=[
+            QuarantinedRowOut(
+                row_index=r.row_index,
+                quarantine_reason=r.quarantine_reason,
+                raw_data=r.raw_data,
+            )
+            for r in quarantined
+        ],
+    )

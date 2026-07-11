@@ -47,6 +47,17 @@ class LeadOut(BaseModel):
     last_contacted: date | None
 
 
+class LeadRawRowOut(BaseModel):
+    """One original CSV row that contributed to a lead — the untouched
+    source values, before any mapping/normalization."""
+
+    source: str
+    filename: str
+    uploaded_at: datetime
+    row_index: int
+    raw_data: dict
+
+
 class LeadPage(BaseModel):
     items: list[LeadOut]
     total: int
