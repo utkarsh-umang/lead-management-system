@@ -6,7 +6,7 @@ import csv
 import io
 import uuid
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Form, HTTPException, UploadFile
 from sqlmodel import select
 from starlette import status
 
@@ -23,7 +23,11 @@ router = APIRouter()
 
 
 @router.post("/upload", response_model=BatchSummary, operation_id="upload_batch")
-async def upload_batch(session: DbSession, file: UploadFile) -> BatchSummary:
+async def upload_batch(
+    session: DbSession,
+    file: UploadFile,
+    source: str | None = Form(default=None),
+) -> BatchSummary:
     raw_bytes = await file.read()
     text = raw_bytes.decode("utf-8-sig")  # -sig strips a BOM if present
     reader = csv.DictReader(io.StringIO(text))
@@ -46,8 +50,13 @@ async def upload_batch(session: DbSession, file: UploadFile) -> BatchSummary:
             "this shape needs a hand-authored mapping spec.",
         )
 
+    # The fingerprint decides HOW to parse (which mapping spec); the source
+    # label decides WHAT LIST this is. They default to the same thing, but
+    # two different lists exported from the same tool share a fingerprint —
+    # an explicit source keeps them distinguishable in provenance/stats.
+    source_label = (source or "").strip() or mapping.source_label
     batch = Batch(
-        source=mapping.source_label,
+        source=source_label,
         filename=file.filename or "unknown.csv",
         mapping_function_id=mapping.id,
         status="processing",
