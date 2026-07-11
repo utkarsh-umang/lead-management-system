@@ -28,4 +28,8 @@ class SourceDetail(BaseModel):
     total_with_email_at_upload: int
     currently_with_email: int
     currently_without_email: int  # eligible for the email finder
+    # Of the without-email leads: already tried by the email finder vs.
+    # not yet attempted (the actual pending queue).
+    enrichment_tried_no_email: int
+    enrichment_pending: int
     batches: list[BatchSummaryOut]

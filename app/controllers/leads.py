@@ -9,10 +9,12 @@ from starlette import status
 
 from app.core.db_dep import DbSession
 from app.models.batch import Batch
+from app.models.enrichment_attempt import EnrichmentAttempt
 from app.models.export import Export, ExportLead
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
 from app.models.raw_row import RawRow
+from app.schemas.enrichment import EnrichmentAttemptOut
 from app.schemas.lead import (
     LeadOut,
     LeadPage,
@@ -120,12 +122,20 @@ async def list_leads(
         )
         last_contacted_by_lead = dict(contacted_rows.all())
 
+        tried_rows = await session.execute(
+            select(EnrichmentAttempt.lead_id)
+            .where(EnrichmentAttempt.lead_id.in_(lead_ids), EnrichmentAttempt.type == "email")
+            .distinct()
+        )
+        email_finder_tried_ids = {row[0] for row in tried_rows.all()}
+
     items = [
         LeadOut(
             **lead.model_dump(),
             sources=sources_by_lead.get(lead.id, []),
             source_files=list(source_files_by_lead.get(lead.id, {}).values()),
             last_contacted=last_contacted_by_lead.get(lead.id),
+            email_finder_tried=lead.id in email_finder_tried_ids,
         )
         for lead in leads
     ]
@@ -160,6 +170,43 @@ async def get_lead_raw_rows(session: DbSession, lead_id: uuid.UUID) -> list[Lead
     ]
 
 
+@router.get(
+    "/{lead_id}/enrichment",
+    response_model=list[EnrichmentAttemptOut],
+    operation_id="get_lead_enrichment_attempts",
+)
+async def get_lead_enrichment_attempts(
+    session: DbSession, lead_id: uuid.UUID
+) -> list[EnrichmentAttemptOut]:
+    lead = await session.get(MasterLead, lead_id)
+    if lead is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Lead {lead_id} not found")
+
+    attempts = (
+        (
+            await session.execute(
+                select(EnrichmentAttempt)
+                .where(EnrichmentAttempt.lead_id == lead_id)
+                .order_by(EnrichmentAttempt.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        EnrichmentAttemptOut(
+            type=a.type,
+            cost_mode=a.cost_mode,
+            status=a.status,
+            value=a.value,
+            provider=a.provider,
+            cost_incurred=a.cost_incurred,
+            attempted_at=a.created_at,
+        )
+        for a in attempts
+    ]
+
+
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="delete_lead")
 async def delete_lead(session: DbSession, lead_id: uuid.UUID) -> None:
     lead = await session.get(MasterLead, lead_id)
@@ -176,4 +223,5 @@ async def delete_lead(session: DbSession, lead_id: uuid.UUID) -> None:
     # something a later deletion should retroactively rewrite.
     await session.execute(delete(LeadSource).where(LeadSource.lead_id == lead_id))
     await session.execute(delete(ExportLead).where(ExportLead.lead_id == lead_id))
+    await session.execute(delete(EnrichmentAttempt).where(EnrichmentAttempt.lead_id == lead_id))
     await session.delete(lead)

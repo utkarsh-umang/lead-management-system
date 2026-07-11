@@ -45,6 +45,9 @@ class LeadOut(BaseModel):
     # Most recent Instantly export month for this lead (see exports tables) —
     # null means never contacted.
     last_contacted: date | None
+    # Whether the email finder has attempted this lead (any cost tier) —
+    # splits "no email yet" into "not yet attempted" vs "tried, not found".
+    email_finder_tried: bool
 
 
 class LeadRawRowOut(BaseModel):
