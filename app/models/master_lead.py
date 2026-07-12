@@ -22,6 +22,11 @@ from app.db.base import Base
 class MasterLead(Base, table=True):
     __tablename__ = "master_leads"
 
+    # Human gate for the enrichment queue: held leads never appear in the
+    # email finder's work queue until explicitly released (import-time
+    # "don't run the finder" choice + a Release button on the source page).
+    enrichment_hold: bool = Field(default=False)
+
     # ── Universal — contact & web presence ──
     email: str | None = Field(default=None, index=True)
     email_source: str | None = Field(default=None)

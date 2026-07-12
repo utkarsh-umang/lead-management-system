@@ -27,6 +27,10 @@ async def upload_batch(
     session: DbSession,
     file: UploadFile,
     source: str | None = Form(default=None),
+    # When true, this upload's NEW leads are held out of the email finder
+    # queue until released from the source page (merged leads keep their
+    # existing eligibility).
+    enrichment_hold: bool = Form(default=False),
 ) -> BatchSummary:
     raw_bytes = await file.read()
     text = raw_bytes.decode("utf-8-sig")  # -sig strips a BOM if present
@@ -64,7 +68,9 @@ async def upload_batch(
     session.add(batch)
     await session.flush()
 
-    batch = await run_ingestion(session, batch, mapping.mapping_spec, rows)
+    batch = await run_ingestion(
+        session, batch, mapping.mapping_spec, rows, enrichment_hold=enrichment_hold
+    )
     # Commit before waking the enrichment long-poll: the woken request
     # queries in its own session, so uncommitted leads would be invisible
     # and the wake-up wasted (it would only catch up on the next timeout).

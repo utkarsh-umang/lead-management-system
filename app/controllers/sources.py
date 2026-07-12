@@ -1,7 +1,7 @@
 """Per-source detail — what the Dashboard's "Leads by Source" rows link to."""
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlmodel import select
 from starlette import status
 
@@ -10,9 +10,36 @@ from app.models.batch import Batch
 from app.models.enrichment_attempt import EnrichmentAttempt
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
-from app.schemas.source import BatchSummaryOut, SourceDetail
+from app.schemas.source import BatchSummaryOut, ReleaseResult, SourceDetail
+from app.services.enrichment_signals import notify_work
 
 router = APIRouter()
+
+
+@router.post(
+    "/{source}/release-enrichment",
+    response_model=ReleaseResult,
+    operation_id="release_enrichment_hold",
+)
+async def release_enrichment_hold(session: DbSession, source: str) -> ReleaseResult:
+    """Lift the import-time hold for this source's leads — they join the
+    email finder queue immediately (the worker is woken, not polled)."""
+    lead_ids_subq = (
+        select(LeadSource.lead_id)
+        .join(Batch, LeadSource.batch_id == Batch.id)
+        .where(Batch.source == source)
+    )
+    result = await session.execute(
+        update(MasterLead)
+        .where(MasterLead.id.in_(lead_ids_subq), MasterLead.enrichment_hold.is_(True))
+        .values(enrichment_hold=False)
+    )
+    # Commit before waking the long-poll — the woken request reads in a
+    # fresh session, so the flag flip must be durable first.
+    await session.commit()
+    if result.rowcount:
+        notify_work()
+    return ReleaseResult(released=result.rowcount or 0)
 
 
 @router.get("/{source}", response_model=SourceDetail, operation_id="get_source_detail")
@@ -40,6 +67,7 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
     currently_with_email = 0
     with_email_at_upload = 0
     enrichment_tried_no_email = 0
+    enrichment_on_hold = 0
     if lead_ids:
         currently_with_email = (
             await session.execute(
@@ -81,6 +109,17 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
                 )
             )
         ).scalar_one()
+        enrichment_on_hold = (
+            await session.execute(
+                select(func.count())
+                .select_from(MasterLead)
+                .where(
+                    MasterLead.id.in_(lead_ids),
+                    MasterLead.email.is_(None),
+                    MasterLead.enrichment_hold.is_(True),
+                )
+            )
+        ).scalar_one()
 
     without_email = len(lead_ids) - currently_with_email
     return SourceDetail(
@@ -93,6 +132,8 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
         currently_with_email=currently_with_email,
         currently_without_email=without_email,
         enrichment_tried_no_email=enrichment_tried_no_email,
-        enrichment_pending=without_email - enrichment_tried_no_email,
+        enrichment_on_hold=enrichment_on_hold,
+        # held leads are neither tried nor waiting for the worker
+        enrichment_pending=without_email - enrichment_tried_no_email - enrichment_on_hold,
         batches=[BatchSummaryOut(**b.model_dump()) for b in batches],
     )

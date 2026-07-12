@@ -19,6 +19,10 @@ class BatchSummaryOut(BaseModel):
     row_count_with_email: int
 
 
+class ReleaseResult(BaseModel):
+    released: int
+
+
 class SourceDetail(BaseModel):
     source: str
     lead_count: int
@@ -31,5 +35,6 @@ class SourceDetail(BaseModel):
     # Of the without-email leads: already tried by the email finder vs.
     # not yet attempted (the actual pending queue).
     enrichment_tried_no_email: int
+    enrichment_on_hold: int  # import-time hold, waiting for Release
     enrichment_pending: int
     batches: list[BatchSummaryOut]

@@ -21,7 +21,11 @@ def _is_empty_row(raw_row: dict[str, Any]) -> bool:
 
 
 async def run_ingestion(
-    session: AsyncSession, batch: Batch, mapping_spec: dict, rows: list[dict]
+    session: AsyncSession,
+    batch: Batch,
+    mapping_spec: dict,
+    rows: list[dict],
+    enrichment_hold: bool = False,
 ) -> Batch:
     batch.row_count_raw = len(rows)
 
@@ -49,7 +53,7 @@ async def run_ingestion(
         session.add(db_raw_row)
         await session.flush()  # get db_raw_row.id
 
-        lead, is_new = await upsert_lead(session, canonical)
+        lead, is_new = await upsert_lead(session, canonical, enrichment_hold=enrichment_hold)
 
         session.add(LeadSource(lead_id=lead.id, batch_id=batch.id, row_id=db_raw_row.id))
 

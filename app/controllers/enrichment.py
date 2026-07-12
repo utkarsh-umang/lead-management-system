@@ -43,7 +43,11 @@ def _queue_query(cost_mode: str, limit: int):
     )
     return (
         select(MasterLead)
-        .where(MasterLead.email.is_(None), ~attempted)
+        .where(
+            MasterLead.email.is_(None),
+            MasterLead.enrichment_hold.is_(False),  # held leads wait for Release
+            ~attempted,
+        )
         .order_by(MasterLead.created_at)
         .limit(limit)
     )
@@ -186,7 +190,11 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
             await session.execute(
                 select(func.count())
                 .select_from(MasterLead)
-                .where(MasterLead.email.is_(None), ~attempted)
+                .where(
+                    MasterLead.email.is_(None),
+                    MasterLead.enrichment_hold.is_(False),
+                    ~attempted,
+                )
             )
         ).scalar_one()
 

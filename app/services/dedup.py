@@ -66,11 +66,14 @@ async def find_matching_lead(session: AsyncSession, canonical: dict) -> MasterLe
     return None
 
 
-async def upsert_lead(session: AsyncSession, canonical: dict) -> tuple[MasterLead, bool]:
-    """Returns (lead, is_new)."""
+async def upsert_lead(
+    session: AsyncSession, canonical: dict, enrichment_hold: bool = False
+) -> tuple[MasterLead, bool]:
+    """Returns (lead, is_new). enrichment_hold applies to NEW leads only —
+    a merge never retroactively holds a lead that was already eligible."""
     existing = await find_matching_lead(session, canonical)
     if existing is None:
-        lead = MasterLead(**canonical)
+        lead = MasterLead(**canonical, enrichment_hold=enrichment_hold)
         session.add(lead)
         await session.flush()  # get lead.id without committing
         return lead, True
