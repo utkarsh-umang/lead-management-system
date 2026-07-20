@@ -89,4 +89,9 @@ class LeadStats(BaseModel):
     total: int
     with_email: int
     without_email: int
+    # The working pipeline: has an email (so it CAN be contacted) and has
+    # never appeared in an export. Deliberately not "every lead without an
+    # export" — a lead with no email isn't waiting on you, it's waiting on
+    # the finder, and lumping the two hides the number you'd act on.
+    contactable_never_contacted: int
     by_source: list[SourceCount]

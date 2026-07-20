@@ -13,9 +13,13 @@ class ExportSelection(BaseModel):
 
     lead_ids: list[uuid.UUID] | None = None
     # Filter-based selection — only consulted when lead_ids is None.
+    # These mirror GET /leads exactly; anything the table can filter on,
+    # select-all-matching must be able to express, or "export what I see"
+    # quietly exports more than the user is looking at.
     search: str | None = None
     source: str | None = None
     has_email: bool | None = None
+    email_from_finder: bool | None = None
 
 
 class ExportPreviewOut(BaseModel):

@@ -25,7 +25,8 @@ from app.schemas.export import (
     ExportPreviewOut,
     ExportSelection,
 )
-from app.services.lead_search import search_condition
+from app.services.contact_record import record_contact_event
+from app.services.lead_filters import email_from_finder_condition, search_condition
 
 router = APIRouter()
 
@@ -59,6 +60,8 @@ def _selection_query(selection: ExportSelection):
         query = query.where(
             MasterLead.email.is_not(None) if selection.has_email else MasterLead.email.is_(None)
         )
+    if selection.email_from_finder is not None:
+        query = query.where(email_from_finder_condition(selection.email_from_finder))
     return query
 
 
@@ -187,15 +190,7 @@ async def create_export(session: DbSession, body: ExportCreateIn) -> StreamingRe
         )
 
     scheduled_month = date(body.year, body.month, 1)
-    export = Export(
-        destination="instantly",
-        scheduled_month=scheduled_month,
-        lead_count=len(exportable),
-    )
-    session.add(export)
-    await session.flush()  # need export.id for the join rows
-    for lead in exportable:
-        session.add(ExportLead(export_id=export.id, lead_id=lead.id))
+    await record_contact_event(session, [lead.id for lead in exportable], scheduled_month)
     # Commit before streaming: the dependency's commit runs in teardown,
     # after the response body is already on the wire — too late to fail.
     # The contact record must be durable before the user has the CSV.

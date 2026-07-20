@@ -23,7 +23,7 @@ from app.schemas.lead import (
     SourceCount,
     SourceFileOut,
 )
-from app.services.lead_search import search_condition
+from app.services.lead_filters import email_from_finder_condition, search_condition
 
 router = APIRouter()
 
@@ -34,6 +34,20 @@ async def get_lead_stats(session: DbSession) -> LeadStats:
     with_email = (
         await session.execute(
             select(func.count()).select_from(MasterLead).where(MasterLead.email.is_not(None))
+        )
+    ).scalar_one()
+
+    # NOT EXISTS rather than a NOT IN over export_leads: the subquery stays
+    # inside Postgres either way, but NOT IN would also have to reason about
+    # NULLs. This is the dashboard's headline "still to work" number.
+    contactable_never_contacted = (
+        await session.execute(
+            select(func.count())
+            .select_from(MasterLead)
+            .where(
+                MasterLead.email.is_not(None),
+                ~exists().where(ExportLead.lead_id == MasterLead.id),
+            )
         )
     ).scalar_one()
 
@@ -68,6 +82,7 @@ async def get_lead_stats(session: DbSession) -> LeadStats:
         total=total,
         with_email=with_email,
         without_email=total - with_email,
+        contactable_never_contacted=contactable_never_contacted,
         by_source=by_source,
     )
 
@@ -114,16 +129,12 @@ async def list_leads(
         count_query = count_query.where(condition)
 
     if email_from_finder is not None:
-        # Splits "has an email" into earned vs free: the enricher always
-        # stamps email_source='email_finder', so anything else (including
-        # NULL) means the email arrived with the uploaded CSV.
-        # Deliberately not expressible as has_email + finder_tried: a lead
-        # can be tried, come back not_found, and later get an email from a
-        # merge — attempt history says "tried", provenance says "the list
-        # supplied it", and only the latter answers "did the finder earn
-        # this?".
-        from_finder = func.coalesce(MasterLead.email_source, "") == "email_finder"
-        condition = from_finder if email_from_finder else ~from_finder
+        # Splits "has an email" into earned vs free. Deliberately not
+        # expressible as has_email + finder_tried: a lead can be tried,
+        # come back not_found, and later get an email from a merge —
+        # attempt history says "tried", provenance says "the list supplied
+        # it", and only the latter answers "did the finder earn this?".
+        condition = email_from_finder_condition(email_from_finder)
         query = query.where(condition)
         count_query = count_query.where(condition)
 
