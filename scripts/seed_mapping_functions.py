@@ -16,6 +16,8 @@ from sqlmodel import select  # noqa: E402
 from app.db.session import AsyncSessionLocal  # noqa: E402
 from app.models.mapping_function import MappingFunction  # noqa: E402
 from app.services.mapping.fingerprint import compute_fingerprint  # noqa: E402
+from app.services.mapping.specs.apollo import MAPPING_SPEC as APOLLO_SPEC  # noqa: E402
+from app.services.mapping.specs.apollo import SOURCE_LABEL as APOLLO_LABEL  # noqa: E402
 from app.services.mapping.specs.youtube_consulti import MAPPING_SPEC as CONSULTI_SPEC  # noqa: E402
 from app.services.mapping.specs.youtube_consulti import SOURCE_LABEL as CONSULTI_LABEL  # noqa: E402
 from app.services.mapping.specs.youtube_tool import MAPPING_SPEC as TOOL_SPEC  # noqa: E402
@@ -24,12 +26,22 @@ from app.services.mapping.specs.youtube_tool import SOURCE_LABEL as TOOL_LABEL  
 SEEDS = [
     (Path.home() / "Desktop" / "youtube-tool.csv", TOOL_LABEL, TOOL_SPEC),
     (Path.home() / "Desktop" / "youtube-consulti.csv", CONSULTI_LABEL, CONSULTI_SPEC),
+    (
+        Path.home() / "Desktop" / "Ad Agencies -- Apollo - 1443 36k Apollo Leads.csv",
+        APOLLO_LABEL,
+        APOLLO_SPEC,
+    ),
 ]
 
 
 async def main() -> None:
     async with AsyncSessionLocal() as session:
         for csv_path, source_label, spec in SEEDS:
+            if not csv_path.exists():
+                # Already-registered sources whose CSV has since left Desktop —
+                # their fingerprint lives in the DB; nothing to (re)compute.
+                print(f"csv gone, skipping: {source_label} ({csv_path.name})")
+                continue
             with open(csv_path, encoding="utf-8-sig") as f:
                 headers = next(csv.reader(f))
             fingerprint = compute_fingerprint(headers)

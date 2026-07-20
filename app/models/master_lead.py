@@ -44,6 +44,24 @@ class MasterLead(Base, table=True):
     country: str | None = Field(default=None, index=True)
     niche: str | None = Field(default=None)
     category: str | None = Field(default=None)
+    # Industry is deliberately separate from niche/category: those carry
+    # YouTube-native taxonomy from the channel tools, and Apollo's industry
+    # taxonomy would silently collide into them.
+    industry: str | None = Field(default=None)
+
+    # ── Universal — person identity (when the lead IS a person at a company,
+    # e.g. Apollo exports; a YouTube-native lead leaves these NULL) ──
+    first_name: str | None = Field(default=None)
+    last_name: str | None = Field(default=None)
+    job_title: str | None = Field(default=None)
+    seniority: str | None = Field(default=None)
+    phone: str | None = Field(default=None)
+
+    # ── Universal — company (the org the person belongs to) ──
+    company_name: str | None = Field(default=None)
+    # A different entity's profile than social_linkedin (the person's) —
+    # merging both into one column would lose the person/company distinction.
+    company_linkedin: str | None = Field(default=None)
 
     # ── Universal — provenance from the upstream source tool itself ──
     source_discovered_at: datetime | None = Field(default=None)

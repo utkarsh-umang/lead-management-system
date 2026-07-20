@@ -29,9 +29,11 @@ from app.schemas.export import (
 router = APIRouter()
 
 # Instantly maps CSV columns on import; these headers match its standard
-# field names so the mapping step is zero-effort. first_name/company_name
-# both carry the channel name — it's the only name-like field a YouTube
-# lead has, and {{firstName}} is the variable templates actually use.
+# field names so the mapping step is zero-effort. For YouTube-native leads
+# first_name/company_name both carry the channel name — it's the only
+# name-like field such a lead has, and {{firstName}} is the variable
+# templates actually use. Person-centric leads (Apollo) have the real
+# first_name/company_name, which win when present.
 CSV_HEADERS = ["email", "first_name", "company_name", "website", "youtube_url", "niche", "country"]
 
 
@@ -49,6 +51,9 @@ def _selection_query(selection: ExportSelection):
             or_(
                 MasterLead.youtube_channel_name.ilike(pattern),
                 MasterLead.email.ilike(pattern),
+                MasterLead.first_name.ilike(pattern),
+                MasterLead.last_name.ilike(pattern),
+                MasterLead.company_name.ilike(pattern),
             )
         )
     if selection.source:
@@ -111,17 +116,34 @@ async def get_export_leads(
         )
     ).scalar_one()
 
+    # One name-like field per lead, whatever kind of lead it is: channel
+    # name for YouTube-native, person name (falling back to company) for
+    # person-centric sources like Apollo.
+    display_name = func.coalesce(
+        MasterLead.youtube_channel_name,
+        func.nullif(
+            func.trim(
+                func.concat(
+                    func.coalesce(MasterLead.first_name, ""),
+                    " ",
+                    func.coalesce(MasterLead.last_name, ""),
+                )
+            ),
+            "",
+        ),
+        MasterLead.company_name,
+    )
     rows = await session.execute(
-        select(MasterLead.id, MasterLead.youtube_channel_name, MasterLead.email)
+        select(MasterLead.id, display_name, MasterLead.email)
         .join(ExportLead, ExportLead.lead_id == MasterLead.id)
         .where(ExportLead.export_id == export_id)
-        .order_by(MasterLead.youtube_channel_name)
+        .order_by(display_name)
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
     return ExportLeadsPage(
         items=[
-            ExportLeadItem(lead_id=lid, youtube_channel_name=name, email=email)
+            ExportLeadItem(lead_id=lid, display_name=name, email=email)
             for lid, name, email in rows.all()
         ],
         total=total,
@@ -183,11 +205,11 @@ async def create_export(session: DbSession, body: ExportCreateIn) -> StreamingRe
         writer.writerow(
             [
                 lead.email,
-                lead.youtube_channel_name or "",
-                lead.youtube_channel_name or "",
+                lead.first_name or lead.youtube_channel_name or "",
+                lead.company_name or lead.youtube_channel_name or "",
                 lead.website or "",
                 lead.social_youtube or "",
-                lead.niche or "",
+                lead.niche or lead.industry or "",
                 lead.country or "",
             ]
         )

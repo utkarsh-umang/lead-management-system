@@ -103,7 +103,9 @@ def email_or_null(value: str | None, **_args) -> str | None:
 
 
 def url_or_null(value: str | None, **_args) -> str | None:
-    v = _clean(value)
+    # text(), not _clean(): "n/a"/"x"-style sentinels parse as URLs
+    # (urlparse treats "n/a" as host "n") and must null out first.
+    v = text(value)
     if v is None:
         return None
     parsed = urlparse(v if "://" in v else f"https://{v}")

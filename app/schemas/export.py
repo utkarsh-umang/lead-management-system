@@ -44,7 +44,9 @@ class ExportOut(BaseModel):
 
 class ExportLeadItem(BaseModel):
     lead_id: uuid.UUID
-    youtube_channel_name: str | None
+    # Channel name for YouTube-native leads; person (or company) name for
+    # person-centric ones — computed server-side, see exports controller.
+    display_name: str | None
     email: str | None
 
 

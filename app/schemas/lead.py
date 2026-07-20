@@ -31,6 +31,14 @@ class LeadOut(BaseModel):
     country: str | None
     niche: str | None
     category: str | None
+    industry: str | None
+    first_name: str | None
+    last_name: str | None
+    job_title: str | None
+    seniority: str | None
+    phone: str | None
+    company_name: str | None
+    company_linkedin: str | None
     youtube_channel_name: str | None
     youtube_channel_id: str | None
     youtube_handle: str | None

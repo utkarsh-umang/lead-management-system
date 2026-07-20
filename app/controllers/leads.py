@@ -89,6 +89,9 @@ async def list_leads(
         condition = or_(
             MasterLead.youtube_channel_name.ilike(pattern),
             MasterLead.email.ilike(pattern),
+            MasterLead.first_name.ilike(pattern),
+            MasterLead.last_name.ilike(pattern),
+            MasterLead.company_name.ilike(pattern),
         )
         query = query.where(condition)
         count_query = count_query.where(condition)
