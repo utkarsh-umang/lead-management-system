@@ -80,3 +80,13 @@ class EnrichmentStatusOut(BaseModel):
     attempts_last_hour: int
     attempts_today: int
     found_today: int
+
+    # All-time finder performance (backfill rows excluded, like throughput).
+    # Found rate = found_total / attempts_total, computed client-side.
+    attempts_total: int
+    found_total: int
+
+    # Real money: sum of per-attempt cost_incurred reported by the worker
+    # (exact LLM costs + estimated ScrapingBee/Perplexity per-call costs).
+    cost_today_usd: float
+    cost_total_usd: float

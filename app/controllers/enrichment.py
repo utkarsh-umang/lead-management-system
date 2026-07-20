@@ -201,21 +201,30 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    async def _attempts_since(since: datetime, only_found: bool = False) -> int:
+    async def _attempts_since(since: datetime | None, only_found: bool = False) -> int:
         query = (
             select(func.count())
             .select_from(EnrichmentAttempt)
             .where(
-                EnrichmentAttempt.created_at >= since,
                 # Backfilled ledger rows (imported pre-LMS run history) are
                 # not throughput — counting them makes "tried today" and the
                 # ETA lie on any day a backfill happens.
                 ~EnrichmentAttempt.provider.like("backfill:%"),
             )
         )
+        if since is not None:
+            query = query.where(EnrichmentAttempt.created_at >= since)
         if only_found:
             query = query.where(EnrichmentAttempt.status == "found")
         return (await session.execute(query)).scalar_one()
+
+    async def _cost_since(since: datetime | None) -> float:
+        query = select(func.coalesce(func.sum(EnrichmentAttempt.cost_incurred), 0.0)).where(
+            ~EnrichmentAttempt.provider.like("backfill:%"),
+        )
+        if since is not None:
+            query = query.where(EnrichmentAttempt.created_at >= since)
+        return float((await session.execute(query)).scalar_one())
 
     return EnrichmentStatusOut(
         worker_state=worker.state if worker else None,
@@ -230,6 +239,10 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
         attempts_last_hour=await _attempts_since(now - timedelta(hours=1)),
         attempts_today=await _attempts_since(today_start),
         found_today=await _attempts_since(today_start, only_found=True),
+        attempts_total=await _attempts_since(None),
+        found_total=await _attempts_since(None, only_found=True),
+        cost_today_usd=await _cost_since(today_start),
+        cost_total_usd=await _cost_since(None),
     )
 
 

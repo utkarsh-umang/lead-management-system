@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import delete, func, or_
+from sqlalchemy import delete, exists, func, or_
 from sqlmodel import select
 from starlette import status
 
@@ -79,6 +79,7 @@ async def list_leads(
     search: str | None = Query(default=None),
     source: str | None = Query(default=None),
     has_email: bool | None = Query(default=None),
+    finder_tried: bool | None = Query(default=None),
 ) -> LeadPage:
     query = select(MasterLead)
     count_query = select(func.count()).select_from(MasterLead)
@@ -101,6 +102,15 @@ async def list_leads(
 
     if has_email is not None:
         condition = MasterLead.email.is_not(None) if has_email else MasterLead.email.is_(None)
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    if finder_tried is not None:
+        tried = exists().where(
+            EnrichmentAttempt.lead_id == MasterLead.id,
+            EnrichmentAttempt.type == "email",
+        )
+        condition = tried if finder_tried else ~tried
         query = query.where(condition)
         count_query = count_query.where(condition)
 
