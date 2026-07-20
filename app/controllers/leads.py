@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import delete, exists, func, or_
+from sqlalchemy import delete, exists, func
 from sqlmodel import select
 from starlette import status
 
@@ -23,6 +23,7 @@ from app.schemas.lead import (
     SourceCount,
     SourceFileOut,
 )
+from app.services.lead_search import search_condition
 
 router = APIRouter()
 
@@ -86,13 +87,7 @@ async def list_leads(
 
     if search:
         pattern = f"%{search}%"
-        condition = or_(
-            MasterLead.youtube_channel_name.ilike(pattern),
-            MasterLead.email.ilike(pattern),
-            MasterLead.first_name.ilike(pattern),
-            MasterLead.last_name.ilike(pattern),
-            MasterLead.company_name.ilike(pattern),
-        )
+        condition = search_condition(pattern)
         query = query.where(condition)
         count_query = count_query.where(condition)
 

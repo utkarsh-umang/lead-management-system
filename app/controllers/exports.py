@@ -8,7 +8,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlmodel import select
 from starlette import status
 
@@ -25,6 +25,7 @@ from app.schemas.export import (
     ExportPreviewOut,
     ExportSelection,
 )
+from app.services.lead_search import search_condition
 
 router = APIRouter()
 
@@ -46,16 +47,7 @@ def _selection_query(selection: ExportSelection):
         return query.where(MasterLead.id.in_(selection.lead_ids))
 
     if selection.search:
-        pattern = f"%{selection.search}%"
-        query = query.where(
-            or_(
-                MasterLead.youtube_channel_name.ilike(pattern),
-                MasterLead.email.ilike(pattern),
-                MasterLead.first_name.ilike(pattern),
-                MasterLead.last_name.ilike(pattern),
-                MasterLead.company_name.ilike(pattern),
-            )
-        )
+        query = query.where(search_condition(f"%{selection.search}%"))
     if selection.source:
         source_subquery = (
             select(LeadSource.lead_id)
