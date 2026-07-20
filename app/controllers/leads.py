@@ -81,6 +81,7 @@ async def list_leads(
     source: str | None = Query(default=None),
     has_email: bool | None = Query(default=None),
     finder_tried: bool | None = Query(default=None),
+    email_from_finder: bool | None = Query(default=None),
 ) -> LeadPage:
     query = select(MasterLead)
     count_query = select(func.count()).select_from(MasterLead)
@@ -109,6 +110,20 @@ async def list_leads(
             EnrichmentAttempt.type == "email",
         )
         condition = tried if finder_tried else ~tried
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    if email_from_finder is not None:
+        # Splits "has an email" into earned vs free: the enricher always
+        # stamps email_source='email_finder', so anything else (including
+        # NULL) means the email arrived with the uploaded CSV.
+        # Deliberately not expressible as has_email + finder_tried: a lead
+        # can be tried, come back not_found, and later get an email from a
+        # merge — attempt history says "tried", provenance says "the list
+        # supplied it", and only the latter answers "did the finder earn
+        # this?".
+        from_finder = func.coalesce(MasterLead.email_source, "") == "email_finder"
+        condition = from_finder if email_from_finder else ~from_finder
         query = query.where(condition)
         count_query = count_query.where(condition)
 
