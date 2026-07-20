@@ -62,17 +62,28 @@ def _selection_query(selection: ExportSelection):
     return query
 
 
+# asyncpg refuses a statement with more than 32,767 bind parameters, and a
+# select-all-matching export on a big source blows straight past that (the
+# Apollo list alone has ~35k exportable leads). The IDs here are an explicit
+# selection, not something a subquery can re-derive, so they get chunked.
+_MAX_BIND_PARAMS = 30_000
+
+
 async def _already_exported_ids(session, lead_ids: list[uuid.UUID]) -> dict[uuid.UUID, date]:
     """lead_id -> most recent scheduled_month, for leads exported before."""
     if not lead_ids:
         return {}
-    rows = await session.execute(
-        select(ExportLead.lead_id, func.max(Export.scheduled_month))
-        .join(Export, ExportLead.export_id == Export.id)
-        .where(ExportLead.lead_id.in_(lead_ids))
-        .group_by(ExportLead.lead_id)
-    )
-    return dict(rows.all())
+    exported: dict[uuid.UUID, date] = {}
+    for start in range(0, len(lead_ids), _MAX_BIND_PARAMS):
+        chunk = lead_ids[start : start + _MAX_BIND_PARAMS]
+        rows = await session.execute(
+            select(ExportLead.lead_id, func.max(Export.scheduled_month))
+            .join(Export, ExportLead.export_id == Export.id)
+            .where(ExportLead.lead_id.in_(chunk))
+            .group_by(ExportLead.lead_id)
+        )
+        exported.update(rows.all())
+    return exported
 
 
 @router.get("", response_model=list[ExportOut], operation_id="list_exports")

@@ -56,24 +56,33 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
     if not batches:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No batches found for source {source!r}")
 
-    lead_ids_result = await session.execute(
+    # A SUBQUERY, never a materialized list of IDs: passing them back as
+    # bind parameters dies at 32,767 (asyncpg's limit), which is a real
+    # source size — the 36,535-lead Apollo list 500'd on exactly this.
+    # Every count below filters on this, so the IDs stay inside Postgres.
+    lead_ids_subq = (
         select(LeadSource.lead_id)
         .join(Batch, LeadSource.batch_id == Batch.id)
         .where(Batch.source == source)
         .distinct()
     )
-    lead_ids = [row[0] for row in lead_ids_result.all()]
+
+    lead_count = (
+        await session.execute(
+            select(func.count()).select_from(lead_ids_subq.subquery())
+        )
+    ).scalar_one()
 
     currently_with_email = 0
     with_email_at_upload = 0
     enrichment_tried_no_email = 0
     enrichment_on_hold = 0
-    if lead_ids:
+    if lead_count:
         currently_with_email = (
             await session.execute(
                 select(func.count())
                 .select_from(MasterLead)
-                .where(MasterLead.id.in_(lead_ids), MasterLead.email.is_not(None))
+                .where(MasterLead.id.in_(lead_ids_subq), MasterLead.email.is_not(None))
             )
         ).scalar_one()
         # "Had email at upload" = has an email that did NOT come from the
@@ -89,7 +98,7 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
                 select(func.count())
                 .select_from(MasterLead)
                 .where(
-                    MasterLead.id.in_(lead_ids),
+                    MasterLead.id.in_(lead_ids_subq),
                     MasterLead.email.is_not(None),
                     func.coalesce(MasterLead.email_source, "") != "email_finder",
                 )
@@ -103,7 +112,7 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
                 .select_from(EnrichmentAttempt)
                 .join(MasterLead, MasterLead.id == EnrichmentAttempt.lead_id)
                 .where(
-                    EnrichmentAttempt.lead_id.in_(lead_ids),
+                    EnrichmentAttempt.lead_id.in_(lead_ids_subq),
                     EnrichmentAttempt.type == "email",
                     MasterLead.email.is_(None),
                 )
@@ -114,17 +123,17 @@ async def get_source_detail(session: DbSession, source: str) -> SourceDetail:
                 select(func.count())
                 .select_from(MasterLead)
                 .where(
-                    MasterLead.id.in_(lead_ids),
+                    MasterLead.id.in_(lead_ids_subq),
                     MasterLead.email.is_(None),
                     MasterLead.enrichment_hold.is_(True),
                 )
             )
         ).scalar_one()
 
-    without_email = len(lead_ids) - currently_with_email
+    without_email = lead_count - currently_with_email
     return SourceDetail(
         source=source,
-        lead_count=len(lead_ids),
+        lead_count=lead_count,
         total_rows_uploaded=sum(b.row_count_raw for b in batches),
         total_quarantined=sum(b.row_count_quarantined for b in batches),
         total_deduped=sum(b.row_count_merged for b in batches),
