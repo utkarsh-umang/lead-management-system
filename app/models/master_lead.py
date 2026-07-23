@@ -66,6 +66,19 @@ class MasterLead(Base, table=True):
     # ── Universal — provenance from the upstream source tool itself ──
     source_discovered_at: datetime | None = Field(default=None)
 
+    # Lead-quality tag, cross-source. Currently set by podscan-guest ingestion
+    # (prospect / public_figure / host_or_regular) so the UI can filter to real
+    # prospects without dropping the public figures and show hosts. NULL for
+    # sources that don't classify their leads.
+    lead_tag: str | None = Field(default=None, index=True)
+
+    # Normalized name+company, the lowest dedup tier (see dedup.py and
+    # services/identity.py). Computed at ingestion from first_name+last_name+
+    # company_name; NULL when either is missing — a bare name is too
+    # collision-prone to merge on. Lets a recurring guest accumulate across
+    # sheets/sources instead of duplicating.
+    identity_key: str | None = Field(default=None, index=True)
+
     # ── YouTube-native identity (only when the lead IS a YouTube channel) ──
     youtube_channel_name: str | None = Field(default=None, index=True)
     youtube_channel_id: str | None = Field(default=None, index=True)

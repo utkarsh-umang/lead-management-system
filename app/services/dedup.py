@@ -16,6 +16,12 @@ Tiers, in order:
 4. youtube_channel_name — weakest tier, but the only one that can match
    *across* youtube-tool and youtube-consulti, since they don't share an
    identifier space. Case/whitespace-normalized exact match.
+5. identity_key (name+company) — the only tier that can merge a person who
+   arrives with neither email, LinkedIn, nor a YouTube identity (the podcast
+   guests). Exact match on the normalized name+company key computed at
+   ingestion; only fires when both a name and a company are present, so bare
+   names never fuse strangers (see services/identity.py). Global, not
+   source-siloed: a guest who is also an Apollo contact merges here.
 
 On a match: upsert, existing values win — the new source only fills fields
 that are currently NULL. On no match: insert a new MasterLead.
@@ -94,6 +100,18 @@ async def find_matching_lead(session: AsyncSession, canonical: dict) -> MasterLe
             select(MasterLead).where(
                 func.lower(func.trim(MasterLead.youtube_channel_name)) == normalized
             )
+        )
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+    # Tier 5: name+company. Plain equality on the stored, pre-normalized key
+    # (see services/identity.py) — no SQL normalization twin needed, and the
+    # btree index on identity_key makes it an index lookup, not a scan.
+    identity_key = canonical.get("identity_key")
+    if identity_key:
+        result = await session.execute(
+            select(MasterLead).where(MasterLead.identity_key == identity_key)
         )
         existing = result.scalars().first()
         if existing:

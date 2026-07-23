@@ -13,6 +13,7 @@ from app.models.batch import Batch
 from app.models.lead_source import LeadSource
 from app.models.raw_row import RawRow
 from app.services.dedup import upsert_lead
+from app.services.identity import compute_identity_key
 from app.services.mapping.interpreter import apply_mapping
 
 
@@ -43,6 +44,14 @@ async def run_ingestion(
             continue
 
         canonical = apply_mapping(mapping_spec, raw_row)
+        # Uniform across every source: a lead with a name + company gets a
+        # name+company dedup key (tier 5). YouTube-native rows have neither and
+        # get None, so this is a no-op for them.
+        canonical["identity_key"] = compute_identity_key(
+            canonical.get("first_name"),
+            canonical.get("last_name"),
+            canonical.get("company_name"),
+        )
 
         db_raw_row = RawRow(
             batch_id=batch.id,

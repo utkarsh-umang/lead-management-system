@@ -22,6 +22,9 @@ from app.services.mapping.specs.youtube_consulti import MAPPING_SPEC as CONSULTI
 from app.services.mapping.specs.youtube_consulti import SOURCE_LABEL as CONSULTI_LABEL  # noqa: E402
 from app.services.mapping.specs.youtube_tool import MAPPING_SPEC as TOOL_SPEC  # noqa: E402
 from app.services.mapping.specs.youtube_tool import SOURCE_LABEL as TOOL_LABEL  # noqa: E402
+from app.services.mapping.specs.podscan_guest import CANONICAL_HEADERS as PODSCAN_HEADERS  # noqa: E402
+from app.services.mapping.specs.podscan_guest import MAPPING_SPEC as PODSCAN_SPEC  # noqa: E402
+from app.services.mapping.specs.podscan_guest import SOURCE_LABEL as PODSCAN_LABEL  # noqa: E402
 
 SEEDS = [
     (Path.home() / "Desktop" / "youtube-tool.csv", TOOL_LABEL, TOOL_SPEC),
@@ -65,6 +68,28 @@ async def main() -> None:
                 )
             )
             print(f"registered: {source_label} ({fingerprint[:12]}...)")
+
+        # Podscan Guest: the shape is code-defined (the flattener always emits
+        # CANONICAL_HEADERS), so the fingerprint comes from that list, not a
+        # file on disk — every flattened sheet dispatches to this one spec.
+        podscan_fp = compute_fingerprint(PODSCAN_HEADERS)
+        podscan_existing = (
+            await session.execute(
+                select(MappingFunction).where(MappingFunction.fingerprint == podscan_fp)
+            )
+        ).scalars().first()
+        if podscan_existing:
+            print(f"already registered: {PODSCAN_LABEL} ({podscan_fp[:12]}...)")
+        else:
+            session.add(
+                MappingFunction(
+                    fingerprint=podscan_fp,
+                    source_label=PODSCAN_LABEL,
+                    mapping_spec=PODSCAN_SPEC,
+                    approved_at=datetime.utcnow(),
+                )
+            )
+            print(f"registered: {PODSCAN_LABEL} ({podscan_fp[:12]}...)")
 
         await session.commit()
 
