@@ -97,6 +97,7 @@ async def list_leads(
     has_email: bool | None = Query(default=None),
     finder_tried: bool | None = Query(default=None),
     email_from_finder: bool | None = Query(default=None),
+    lead_tag: str | None = Query(default=None),
 ) -> LeadPage:
     query = select(MasterLead)
     count_query = select(func.count()).select_from(MasterLead)
@@ -135,6 +136,11 @@ async def list_leads(
         # attempt history says "tried", provenance says "the list supplied
         # it", and only the latter answers "did the finder earn this?".
         condition = email_from_finder_condition(email_from_finder)
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    if lead_tag is not None:
+        condition = MasterLead.lead_tag == lead_tag
         query = query.where(condition)
         count_query = count_query.where(condition)
 

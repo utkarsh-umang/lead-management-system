@@ -39,6 +39,9 @@ class LeadOut(BaseModel):
     phone: str | None
     company_name: str | None
     company_linkedin: str | None
+    # Lead-quality tag (podscan sets prospect/public_figure/host_or_regular);
+    # NULL for sources that don't classify.
+    lead_tag: str | None
     youtube_channel_name: str | None
     youtube_channel_id: str | None
     youtube_handle: str | None

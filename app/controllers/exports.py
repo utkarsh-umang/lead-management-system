@@ -62,6 +62,8 @@ def _selection_query(selection: ExportSelection):
         )
     if selection.email_from_finder is not None:
         query = query.where(email_from_finder_condition(selection.email_from_finder))
+    if selection.lead_tag is not None:
+        query = query.where(MasterLead.lead_tag == selection.lead_tag)
     return query
 
 

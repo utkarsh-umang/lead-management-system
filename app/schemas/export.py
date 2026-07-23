@@ -20,6 +20,7 @@ class ExportSelection(BaseModel):
     source: str | None = None
     has_email: bool | None = None
     email_from_finder: bool | None = None
+    lead_tag: str | None = None
 
 
 class ExportPreviewOut(BaseModel):
