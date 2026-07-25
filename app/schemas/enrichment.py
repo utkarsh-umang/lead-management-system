@@ -26,6 +26,15 @@ class EnrichmentQueueItem(BaseModel):
     social_linkedin: str | None
     niche: str | None
     country: str | None
+    # Person/company identity — what the search-first guest finder needs. Empty
+    # for YouTube-native leads. lead_tag doubles as the worker's routing signal:
+    # a tagged lead (podscan) goes to the guest finder, else to the crawl graph.
+    first_name: str | None = None
+    last_name: str | None = None
+    company_name: str | None = None
+    job_title: str | None = None
+    industry: str | None = None
+    lead_tag: str | None = None
 
 
 class EnrichmentResultIn(BaseModel):

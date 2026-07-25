@@ -67,6 +67,12 @@ def _to_queue_item(lead: MasterLead) -> EnrichmentQueueItem:
         social_linkedin=lead.social_linkedin,
         niche=lead.niche,
         country=lead.country,
+        first_name=lead.first_name,
+        last_name=lead.last_name,
+        company_name=lead.company_name,
+        job_title=lead.job_title,
+        industry=lead.industry,
+        lead_tag=lead.lead_tag,
     )
 
 
