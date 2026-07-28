@@ -6,6 +6,8 @@ tier it already ran at. created_at is the attempt timestamp."""
 
 import uuid
 
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
 
 from app.db.base import Base
@@ -21,3 +23,12 @@ class EnrichmentAttempt(Base, table=True):
     value: str | None = Field(default=None)  # the email, when found
     provider: str | None = Field(default=None)  # e.g. "email_finder@ai-agents-service"
     cost_incurred: float | None = Field(default=None)
+    # The candidate context the enricher gathered (scraped emails + their source
+    # URLs + surrounding text). Persisting it means a later logic improvement can
+    # RE-SCORE this attempt offline — no re-search, no re-scrape, no re-spend.
+    evidence: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    # Ledger-preserving re-queue: to re-attempt a lead we mark its current
+    # attempt superseded (append-only, the row stays) instead of deleting it.
+    # The work queue treats a superseded attempt as "not attempted". Metrics
+    # count distinct leads, so a supersede+re-attempt never double-counts.
+    superseded: bool = Field(default=False, index=True)

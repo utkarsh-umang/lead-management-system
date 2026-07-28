@@ -46,6 +46,8 @@ class EnrichmentResultIn(BaseModel):
     confidence: float | None = None
     provider: str | None = None
     cost_incurred: float | None = None
+    # Candidate context the enricher gathered (for offline re-scoring later).
+    evidence: dict | None = None
 
 
 class EnrichmentAttemptOut(BaseModel):
@@ -66,6 +68,16 @@ class HeartbeatIn(BaseModel):
 
 class PauseIn(BaseModel):
     reason: str
+
+
+class RequeueIn(BaseModel):
+    """Re-queue leads for another enrichment attempt WITHOUT deleting the ledger:
+    their current attempts at this cost_mode are marked superseded (rows stay),
+    and their finder-earned email is cleared so the queue serves them again.
+    Use this instead of deleting attempt rows."""
+
+    lead_ids: list[uuid.UUID]
+    cost_mode: Literal["low", "high"] = "low"
 
 
 class EnrichmentStatusOut(BaseModel):

@@ -10,7 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import exists, func
+from sqlalchemy import exists, func, update
 from sqlmodel import select
 from starlette import status
 
@@ -25,6 +25,7 @@ from app.schemas.enrichment import (
     EnrichmentStatusOut,
     HeartbeatIn,
     PauseIn,
+    RequeueIn,
 )
 from app.services import enrichment_signals as signals
 from app.services.mapping.email_junk import is_junk_email
@@ -40,6 +41,7 @@ def _queue_query(cost_mode: str, limit: int):
         EnrichmentAttempt.lead_id == MasterLead.id,
         EnrichmentAttempt.type == "email",
         EnrichmentAttempt.cost_mode == cost_mode,
+        EnrichmentAttempt.superseded.is_(False),  # a superseded attempt re-queues the lead
     )
     return (
         select(MasterLead)
@@ -182,6 +184,36 @@ async def resume_enrichment(session: DbSession) -> None:
     signals.notify_control()
 
 
+@router.post("/requeue", operation_id="requeue_leads")
+async def requeue_leads(session: DbSession, body: RequeueIn) -> dict:
+    """Re-queue leads for another attempt WITHOUT deleting the ledger. Marks
+    their current attempts at cost_mode superseded (rows stay — the append-only
+    ledger and all spend history are preserved) and clears their finder-earned
+    email so the queue serves them again. Use this instead of deleting rows."""
+    _CHUNK = 15_000  # stay well under asyncpg's 32,767 bind-param ceiling
+    ids = body.lead_ids
+    for i in range(0, len(ids), _CHUNK):
+        chunk = ids[i : i + _CHUNK]
+        await session.execute(
+            update(EnrichmentAttempt)
+            .where(
+                EnrichmentAttempt.lead_id.in_(chunk),
+                EnrichmentAttempt.type == "email",
+                EnrichmentAttempt.cost_mode == body.cost_mode,
+                EnrichmentAttempt.superseded.is_(False),
+            )
+            .values(superseded=True)
+        )
+        await session.execute(
+            update(MasterLead)
+            .where(MasterLead.id.in_(chunk), MasterLead.email_source == "email_finder")
+            .values(email=None, email_source=None, email_confidence=None)
+        )
+    await session.commit()
+    signals.notify_work()  # wake any worker blocked on /queue/wait
+    return {"requeued": len(ids)}
+
+
 @router.get("/status", response_model=EnrichmentStatusOut, operation_id="get_enrichment_status")
 async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
     worker = await _get_worker_state(session)
@@ -191,6 +223,7 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
             EnrichmentAttempt.lead_id == MasterLead.id,
             EnrichmentAttempt.type == "email",
             EnrichmentAttempt.cost_mode == cost_mode,
+            EnrichmentAttempt.superseded.is_(False),
         )
         return (
             await session.execute(
@@ -208,14 +241,19 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     async def _attempts_since(since: datetime | None, only_found: bool = False) -> int:
+        # Count DISTINCT leads, not rows, and ignore superseded attempts — so a
+        # lead re-queued and re-attempted the same day is ONE "try", not two.
+        # This is what keeps "tried today" / "found today" honest across re-runs
+        # (raw row counts double-count re-attempts).
         query = (
-            select(func.count())
+            select(func.count(func.distinct(EnrichmentAttempt.lead_id)))
             .select_from(EnrichmentAttempt)
             .where(
                 # Backfilled ledger rows (imported pre-LMS run history) are
                 # not throughput — counting them makes "tried today" and the
                 # ETA lie on any day a backfill happens.
                 ~EnrichmentAttempt.provider.like("backfill:%"),
+                EnrichmentAttempt.superseded.is_(False),
             )
         )
         if since is not None:
@@ -276,6 +314,7 @@ async def post_enrichment_result(session: DbSession, body: EnrichmentResultIn) -
             value=body.value,
             provider=body.provider,
             cost_incurred=body.cost_incurred,
+            evidence=body.evidence,
         )
     )
 
