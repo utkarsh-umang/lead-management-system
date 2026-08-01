@@ -25,6 +25,9 @@ from app.services.mapping.specs.youtube_tool import SOURCE_LABEL as TOOL_LABEL  
 from app.services.mapping.specs.podscan_guest import CANONICAL_HEADERS as PODSCAN_HEADERS  # noqa: E402
 from app.services.mapping.specs.podscan_guest import MAPPING_SPEC as PODSCAN_SPEC  # noqa: E402
 from app.services.mapping.specs.podscan_guest import SOURCE_LABEL as PODSCAN_LABEL  # noqa: E402
+from app.services.mapping.specs.apollo_lite import EXPECTED_HEADERS as APOLLO_LITE_HEADERS  # noqa: E402
+from app.services.mapping.specs.apollo_lite import MAPPING_SPEC as APOLLO_LITE_SPEC  # noqa: E402
+from app.services.mapping.specs.apollo_lite import SOURCE_LABEL as APOLLO_LITE_LABEL  # noqa: E402
 
 SEEDS = [
     (Path.home() / "Desktop" / "youtube-tool.csv", TOOL_LABEL, TOOL_SPEC),
@@ -90,6 +93,29 @@ async def main() -> None:
                 )
             )
             print(f"registered: {PODSCAN_LABEL} ({podscan_fp[:12]}...)")
+
+        # Apollo-lite: the 9-column reduced Apollo delivery shape. Header set is
+        # fixed by the delivery format, so the fingerprint is code-defined (like
+        # podscan). Each list in this shape sets its own label via the upload's
+        # `source` form param; this spec only decides HOW to parse.
+        apollo_lite_fp = compute_fingerprint(APOLLO_LITE_HEADERS)
+        apollo_lite_existing = (
+            await session.execute(
+                select(MappingFunction).where(MappingFunction.fingerprint == apollo_lite_fp)
+            )
+        ).scalars().first()
+        if apollo_lite_existing:
+            print(f"already registered: {APOLLO_LITE_LABEL} ({apollo_lite_fp[:12]}...)")
+        else:
+            session.add(
+                MappingFunction(
+                    fingerprint=apollo_lite_fp,
+                    source_label=APOLLO_LITE_LABEL,
+                    mapping_spec=APOLLO_LITE_SPEC,
+                    approved_at=datetime.utcnow(),
+                )
+            )
+            print(f"registered: {APOLLO_LITE_LABEL} ({apollo_lite_fp[:12]}...)")
 
         await session.commit()
 
