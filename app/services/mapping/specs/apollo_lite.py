@@ -8,15 +8,20 @@ columns this shape doesn't carry (Seniority, Company Phone, Company Founded
 Year, Industry, Keywords, City/State/Country, Company City/State). Because the
 header set is fixed by the delivery format, the fingerprint is computed from
 `EXPECTED_HEADERS` (code-defined, like podscan_guest) — so every list arriving
-in this shape dispatches here and gets its own list identity from the upload's
-`source` form param, not from this spec's default label.
+in this shape dispatches here.
+
+Provenance model: `source` is the *provider* (Apollo), so this spec's default
+label is "apollo" — the same bucket as the full `apollo` export. A specific list
+(Commercial Roofers, etc.) is a *batch* under that source, identified by the
+batch filename in the UI. So the default is correct as-is; don't pass a `source`
+form param unless a list genuinely came from a different provider.
 
 Dedup identity: email, then normalized Person Linkedin Url. Headline is
 deliberately raw-only (free-text LinkedIn headline — recoverable from raw_rows,
 not worth a canonical column), matching the full apollo spec.
 """
 
-SOURCE_LABEL = "apollo-lite"
+SOURCE_LABEL = "apollo"
 
 # The exact header row this delivery format emits, in file order. The fingerprint
 # is order-independent (fingerprint.py sorts), but keeping file order here makes
