@@ -18,6 +18,7 @@ from app.models.mapping_function import MappingFunction  # noqa: E402
 from app.services.mapping.fingerprint import compute_fingerprint  # noqa: E402
 from app.services.mapping.specs.apollo import MAPPING_SPEC as APOLLO_SPEC  # noqa: E402
 from app.services.mapping.specs.apollo import SOURCE_LABEL as APOLLO_LABEL  # noqa: E402
+from app.services.mapping.specs.apollo import REAL_ESTATE_HEADERS as APOLLO_RE_HEADERS  # noqa: E402
 from app.services.mapping.specs.youtube_consulti import MAPPING_SPEC as CONSULTI_SPEC  # noqa: E402
 from app.services.mapping.specs.youtube_consulti import SOURCE_LABEL as CONSULTI_LABEL  # noqa: E402
 from app.services.mapping.specs.youtube_tool import MAPPING_SPEC as TOOL_SPEC  # noqa: E402
@@ -116,6 +117,27 @@ async def main() -> None:
                 )
             )
             print(f"registered: {APOLLO_LITE_LABEL} ({apollo_lite_fp[:12]}...)")
+
+        # Apollo real-estate variant (20-col: +Facebook/Twitter, -Founded Year).
+        # Its own fingerprint, but points back to the canonical APOLLO_SPEC.
+        apollo_re_fp = compute_fingerprint(APOLLO_RE_HEADERS)
+        apollo_re_existing = (
+            await session.execute(
+                select(MappingFunction).where(MappingFunction.fingerprint == apollo_re_fp)
+            )
+        ).scalars().first()
+        if apollo_re_existing:
+            print(f"already registered: {APOLLO_LABEL} (RE) ({apollo_re_fp[:12]}...)")
+        else:
+            session.add(
+                MappingFunction(
+                    fingerprint=apollo_re_fp,
+                    source_label=APOLLO_LABEL,
+                    mapping_spec=APOLLO_SPEC,
+                    approved_at=datetime.utcnow(),
+                )
+            )
+            print(f"registered: {APOLLO_LABEL} (RE) ({apollo_re_fp[:12]}...)")
 
         await session.commit()
 
