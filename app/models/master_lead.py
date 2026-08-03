@@ -62,6 +62,15 @@ class MasterLead(Base, table=True):
     # A different entity's profile than social_linkedin (the person's) —
     # merging both into one column would lose the person/company distinction.
     company_linkedin: str | None = Field(default=None)
+    # Company headcount (Apollo "# Employees"). Promoted from raw because it's a
+    # primary targeting axis (the 30k list was scoped to 100-200 employees).
+    company_headcount: int | None = Field(default=None)
+
+    # ── Universal — email quality ──
+    # Provider's deliverability verdict for `email` (Apollo "Email Status":
+    # verified / extrapolated / unavailable). Distinct from email_confidence,
+    # which is OUR finder's score — this is the source's own assessment.
+    email_status: str | None = Field(default=None)
 
     # ── Universal — provenance from the upstream source tool itself ──
     source_discovered_at: datetime | None = Field(default=None)

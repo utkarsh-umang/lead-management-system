@@ -40,6 +40,21 @@ REAL_ESTATE_HEADERS = [
     "Facebook Url", "Twitter Url",
     "City", "State", "Country", "Company City", "Company State",
 ]
+# The rich 33-column master export (the "30k" list): everything the RE variant
+# has, plus ID, Full Name, Email Status, Primary Email Source, Languages, Stage,
+# # Employees, Company Founded Year, Company Country, Annual Revenue, and the
+# headcount-growth columns. Only # Employees + Email Status are promoted to
+# canonical columns (below); the rest live in raw_rows.
+MASTER_30K_HEADERS = [
+    "ID", "Full Name", "First Name", "Last Name", "Title", "Headline",
+    "Company Name", "Email", "Email Status", "Primary Email Source", "Seniority",
+    "Company Phone", "Company Founded Year", "Languages", "Stage", "# Employees",
+    "Industry", "Keywords", "Person Linkedin Url", "Website", "Company Linkedin Url",
+    "Facebook Url", "Twitter Url", "City", "State", "Country", "Company City",
+    "Company State", "Company Country", "Annual Revenue",
+    "Company Headcount Six Month Growth", "Company Headcount Twelve Month Growth",
+    "Company Headcount Twenty Four Month Growth",
+]
 
 MAPPING_SPEC = {
     "source_label": SOURCE_LABEL,
@@ -59,5 +74,8 @@ MAPPING_SPEC = {
         # Present only in the real-estate variant; None elsewhere (harmless).
         {"canonical": "social_facebook", "source": "Facebook Url", "op": "url_or_null"},
         {"canonical": "social_twitter", "source": "Twitter Url", "op": "url_or_null"},
+        # Present only in the rich 30k master export; None in leaner shapes.
+        {"canonical": "company_headcount", "source": "# Employees", "op": "to_int"},
+        {"canonical": "email_status", "source": "Email Status", "op": "text"},
     ],
 }
