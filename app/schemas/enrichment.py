@@ -35,6 +35,12 @@ class EnrichmentQueueItem(BaseModel):
     job_title: str | None = None
     industry: str | None = None
     lead_tag: str | None = None
+    # Directory-native handle for company-as-lead sources (Clutch): the lead has
+    # no website/person yet, so this profile URL is the resolver's starting
+    # point (profile -> domain -> senior person -> email). Its presence also
+    # routes the worker to the company-contact resolver instead of the person
+    # finders. None for every person-centric lead.
+    clutch_profile_url: str | None = None
 
 
 class EnrichmentResultIn(BaseModel):
@@ -48,6 +54,18 @@ class EnrichmentResultIn(BaseModel):
     cost_incurred: float | None = None
     # Candidate context the enricher gathered (for offline re-scoring later).
     evidence: dict | None = None
+    # Company-as-lead (Clutch) resolution: WHOSE email this is. A Clutch lead
+    # starts as a bare company; the resolver picks one senior person and finds
+    # their address, so the result carries that person back to stamp onto the
+    # (otherwise personless) lead. All optional — person-centric finders omit them.
+    person_first_name: str | None = None
+    person_last_name: str | None = None
+    person_job_title: str | None = None
+    person_seniority: str | None = None
+    # Provider deliverability verdict for `value` (e.g. Mailin: "ok" | "catch_all"
+    # | "invalid"). Distinct from `confidence` (our name-match score) — this is a
+    # verifier's own assessment. Stored on lead.email_status.
+    email_status: str | None = None
 
 
 class EnrichmentAttemptOut(BaseModel):

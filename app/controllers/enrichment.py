@@ -75,6 +75,7 @@ def _to_queue_item(lead: MasterLead) -> EnrichmentQueueItem:
         job_title=lead.job_title,
         industry=lead.industry,
         lead_tag=lead.lead_tag,
+        clutch_profile_url=lead.clutch_profile_url,
     )
 
 
@@ -325,4 +326,17 @@ async def post_enrichment_result(session: DbSession, body: EnrichmentResultIn) -
         lead.email = body.value
         lead.email_source = "email_finder"
         lead.email_confidence = body.confidence
+        if body.email_status is not None:
+            lead.email_status = body.email_status
+        # Company-as-lead (Clutch): the resolver found ONE senior person's
+        # address for a lead that had no person. Stamp who it is — fill-if-null,
+        # so we never clobber a person the lead already carried.
+        if lead.first_name is None and body.person_first_name is not None:
+            lead.first_name = body.person_first_name
+        if lead.last_name is None and body.person_last_name is not None:
+            lead.last_name = body.person_last_name
+        if lead.job_title is None and body.person_job_title is not None:
+            lead.job_title = body.person_job_title
+        if lead.seniority is None and body.person_seniority is not None:
+            lead.seniority = body.person_seniority
         session.add(lead)
