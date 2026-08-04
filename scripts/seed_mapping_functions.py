@@ -30,6 +30,9 @@ from app.services.mapping.specs.podscan_guest import SOURCE_LABEL as PODSCAN_LAB
 from app.services.mapping.specs.apollo_lite import EXPECTED_HEADERS as APOLLO_LITE_HEADERS  # noqa: E402
 from app.services.mapping.specs.apollo_lite import MAPPING_SPEC as APOLLO_LITE_SPEC  # noqa: E402
 from app.services.mapping.specs.apollo_lite import SOURCE_LABEL as APOLLO_LITE_LABEL  # noqa: E402
+from app.services.mapping.specs.clutch import EXPECTED_HEADERS as CLUTCH_HEADERS  # noqa: E402
+from app.services.mapping.specs.clutch import MAPPING_SPEC as CLUTCH_SPEC  # noqa: E402
+from app.services.mapping.specs.clutch import SOURCE_LABEL as CLUTCH_LABEL  # noqa: E402
 
 SEEDS = [
     (Path.home() / "Desktop" / "youtube-tool.csv", TOOL_LABEL, TOOL_SPEC),
@@ -161,6 +164,28 @@ async def main() -> None:
                 )
             )
             print(f"registered: {APOLLO_LABEL} (30k) ({apollo_30k_fp[:12]}...)")
+
+        # Clutch directory scrape (79-col company-as-lead shape). Code-defined
+        # header set (fixed by the scraper output), own fingerprint -> its own
+        # company-centric spec.
+        clutch_fp = compute_fingerprint(CLUTCH_HEADERS)
+        clutch_existing = (
+            await session.execute(
+                select(MappingFunction).where(MappingFunction.fingerprint == clutch_fp)
+            )
+        ).scalars().first()
+        if clutch_existing:
+            print(f"already registered: {CLUTCH_LABEL} ({clutch_fp[:12]}...)")
+        else:
+            session.add(
+                MappingFunction(
+                    fingerprint=clutch_fp,
+                    source_label=CLUTCH_LABEL,
+                    mapping_spec=CLUTCH_SPEC,
+                    approved_at=datetime.utcnow(),
+                )
+            )
+            print(f"registered: {CLUTCH_LABEL} ({clutch_fp[:12]}...)")
 
         await session.commit()
 

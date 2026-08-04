@@ -22,6 +22,13 @@ Tiers, in order:
    ingestion; only fires when both a name and a company are present, so bare
    names never fuse strangers (see services/identity.py). Global, not
    source-siloed: a guest who is also an Apollo contact merges here.
+6. clutch_profile_url — directory-native identity for company-as-lead sources
+   (the Clutch agency scrape). Those leads have no email, no person, and no
+   name+company key (no person name), so tiers 1-5 never fire; the Clutch
+   profile URL is the only stable anchor — it dedups the list against itself
+   and against future re-pulls. Exact match: the scraper emits one consistent
+   URL format, so no normalization twin is needed (unlike LinkedIn). Only fires
+   when a clutch_profile_url is present.
 
 On a match: upsert, existing values win — the new source only fills fields
 that are currently NULL. On no match: insert a new MasterLead.
@@ -112,6 +119,18 @@ async def find_matching_lead(session: AsyncSession, canonical: dict) -> MasterLe
     if identity_key:
         result = await session.execute(
             select(MasterLead).where(MasterLead.identity_key == identity_key)
+        )
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+    # Tier 6: Clutch profile URL — directory-native identity for company-as-lead
+    # sources with no email/person/name-key. Plain equality (single consistent
+    # scraper format); indexed, so an index lookup.
+    clutch_profile_url = canonical.get("clutch_profile_url")
+    if clutch_profile_url:
+        result = await session.execute(
+            select(MasterLead).where(MasterLead.clutch_profile_url == clutch_profile_url)
         )
         existing = result.scalars().first()
         if existing:

@@ -88,6 +88,14 @@ class MasterLead(Base, table=True):
     # sheets/sources instead of duplicating.
     identity_key: str | None = Field(default=None, index=True)
 
+    # ── Directory-native identity (only when the lead IS a directory listing,
+    # e.g. a Clutch agency profile). For company-as-lead sources there's no
+    # email or person to anchor on, so the directory's stable per-listing URL
+    # is the identity — the dedup key within the source and across re-pulls
+    # (see dedup.py tier 6). Prefixed like youtube_* because it exists only
+    # because the lead's identity IS that directory listing. ──
+    clutch_profile_url: str | None = Field(default=None, index=True)
+
     # ── YouTube-native identity (only when the lead IS a YouTube channel) ──
     youtube_channel_name: str | None = Field(default=None, index=True)
     youtube_channel_id: str | None = Field(default=None, index=True)
