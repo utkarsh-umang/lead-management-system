@@ -46,6 +46,13 @@ def text(value: str | None, **_args) -> str | None:
     return None if v.lower() in _NULL_SENTINELS else v
 
 
+def const(_value: str | None, *, value=None, **_args):
+    """Ignore the source cell and emit a fixed value from op_args. Used to
+    stamp a source-level constant onto every row (e.g. lead_tag='podcast_host')
+    without needing a column in the CSV to carry it."""
+    return value
+
+
 def to_int(value: str | None, **_args) -> int | None:
     v = _clean(value)
     if v is None:
@@ -139,6 +146,7 @@ def youtube_url_from_handle(value: str | None, **_args) -> str | None:
 
 OPS = {
     "text": text,
+    "const": const,
     "to_int": to_int,
     "to_float": to_float,
     "date_parse": date_parse,

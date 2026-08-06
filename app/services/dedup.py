@@ -29,6 +29,12 @@ Tiers, in order:
    and against future re-pulls. Exact match: the scraper emits one consistent
    URL format, so no normalization twin is needed (unlike LinkedIn). Only fires
    when a clutch_profile_url is present.
+7. podcast_id — platform-native identity for the Podscan Host source (one row =
+   one podcast). A podcast that arrives without a brand-matched email has no
+   email/person/name-key either, so tiers 1-5 miss it; Podscan's stable per-
+   podcast id (`pd_...`) is the anchor that keeps re-pulls from duplicating it.
+   Exact match (one consistent id format). Only fires when a podcast_id is
+   present.
 
 On a match: upsert, existing values win — the new source only fills fields
 that are currently NULL. On no match: insert a new MasterLead.
@@ -131,6 +137,18 @@ async def find_matching_lead(session: AsyncSession, canonical: dict) -> MasterLe
     if clutch_profile_url:
         result = await session.execute(
             select(MasterLead).where(MasterLead.clutch_profile_url == clutch_profile_url)
+        )
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+    # Tier 7: Podscan podcast id — platform-native identity for the Podscan Host
+    # source. Plain equality (one consistent id format); indexed lookup. Only
+    # fires when a podcast_id is present.
+    podcast_id = canonical.get("podcast_id")
+    if podcast_id:
+        result = await session.execute(
+            select(MasterLead).where(MasterLead.podcast_id == podcast_id)
         )
         existing = result.scalars().first()
         if existing:

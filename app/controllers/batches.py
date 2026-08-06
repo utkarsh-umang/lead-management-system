@@ -54,7 +54,20 @@ async def upload_batch(
         )
     raw_bytes = await file.read()
     text = raw_bytes.decode("utf-8-sig")  # -sig strips a BOM if present
-    reader = csv.DictReader(io.StringIO(text))
+    # Excel-flavoured exports (e.g. Podscan) prepend a `sep=;` hint line and
+    # use that delimiter; others are plain comma. Honor an explicit `sep=` line,
+    # else sniff , vs ; from the header, so both shapes parse without a manual
+    # pre-clean. The fingerprint is computed from the resulting header names, so
+    # a correctly-split header is what makes the shape dispatch to its spec.
+    delimiter = ","
+    newline = text.find("\n")
+    first_line = (text[:newline] if newline != -1 else text).strip()
+    if first_line[:4].lower() == "sep=" and len(first_line) >= 5:
+        delimiter = first_line[4]
+        text = text[newline + 1:] if newline != -1 else ""
+    elif first_line.count(";") > first_line.count(","):
+        delimiter = ";"
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     rows = list(reader)
 
     if not reader.fieldnames:

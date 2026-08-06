@@ -96,6 +96,15 @@ class MasterLead(Base, table=True):
     # because the lead's identity IS that directory listing. ──
     clutch_profile_url: str | None = Field(default=None, index=True)
 
+    # ── Platform-native identity (only when the lead IS a podcast, e.g. the
+    # Podscan Host source). One row = one podcast; a podcast that arrives with
+    # no brand-matched email has no person or name+company key to anchor on, so
+    # Podscan's stable per-podcast id (`pd_...`) is the identity — the dedup key
+    # within the source and across re-pulls (see dedup.py tier 7). Prefixed like
+    # clutch_profile_url because it exists only because the lead's identity IS
+    # that podcast listing. ──
+    podcast_id: str | None = Field(default=None, index=True)
+
     # ── YouTube-native identity (only when the lead IS a YouTube channel) ──
     youtube_channel_name: str | None = Field(default=None, index=True)
     youtube_channel_id: str | None = Field(default=None, index=True)

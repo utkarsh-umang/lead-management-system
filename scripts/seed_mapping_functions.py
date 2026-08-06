@@ -33,6 +33,9 @@ from app.services.mapping.specs.apollo_lite import SOURCE_LABEL as APOLLO_LITE_L
 from app.services.mapping.specs.clutch import EXPECTED_HEADERS as CLUTCH_HEADERS  # noqa: E402
 from app.services.mapping.specs.clutch import MAPPING_SPEC as CLUTCH_SPEC  # noqa: E402
 from app.services.mapping.specs.clutch import SOURCE_LABEL as CLUTCH_LABEL  # noqa: E402
+from app.services.mapping.specs.podscan_host import EXPECTED_HEADERS as PODSCAN_HOST_HEADERS  # noqa: E402
+from app.services.mapping.specs.podscan_host import MAPPING_SPEC as PODSCAN_HOST_SPEC  # noqa: E402
+from app.services.mapping.specs.podscan_host import SOURCE_LABEL as PODSCAN_HOST_LABEL  # noqa: E402
 
 SEEDS = [
     (Path.home() / "Desktop" / "youtube-tool.csv", TOOL_LABEL, TOOL_SPEC),
@@ -186,6 +189,28 @@ async def main() -> None:
                 )
             )
             print(f"registered: {CLUTCH_LABEL} ({clutch_fp[:12]}...)")
+
+        # Podscan Host (one row = one podcast, arrives with candidate emails).
+        # Code-defined header set (fixed by the Podscan export), own fingerprint
+        # -> its own spec, which brand-matches the send-ready email at ingest.
+        podscan_host_fp = compute_fingerprint(PODSCAN_HOST_HEADERS)
+        podscan_host_existing = (
+            await session.execute(
+                select(MappingFunction).where(MappingFunction.fingerprint == podscan_host_fp)
+            )
+        ).scalars().first()
+        if podscan_host_existing:
+            print(f"already registered: {PODSCAN_HOST_LABEL} ({podscan_host_fp[:12]}...)")
+        else:
+            session.add(
+                MappingFunction(
+                    fingerprint=podscan_host_fp,
+                    source_label=PODSCAN_HOST_LABEL,
+                    mapping_spec=PODSCAN_HOST_SPEC,
+                    approved_at=datetime.utcnow(),
+                )
+            )
+            print(f"registered: {PODSCAN_HOST_LABEL} ({podscan_host_fp[:12]}...)")
 
         await session.commit()
 

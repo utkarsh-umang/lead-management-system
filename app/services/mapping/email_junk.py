@@ -83,6 +83,23 @@ VENDOR_DOMAINS = frozenset(
     }
 )
 
+# Podcast hosting/distribution platforms. A "Podcast Email" scraped off a
+# hosting page is the platform's address (or a per-show alias on the platform),
+# never the show's own brand inbox — worthless for outreach. Ported from the
+# qualifier's Apps-Script blacklist. Rejected the same way vendor domains are,
+# so it fires in BOTH the ingest-time qualifier AND the finder-result path
+# (enrichment.py routes every found email through is_junk_email).
+PODCAST_HOST_DOMAINS = frozenset(
+    {
+        "spreaker.com", "anchor.fm", "spotify.com", "podcasters.spotify.com",
+        "simplecast.com", "buzzsprout.com", "libsyn.com", "podbean.com",
+        "transistor.fm", "redcircle.com", "megaphone.fm", "omny.fm",
+        "captivate.fm", "blubrry.com", "podomatic.com", "soundcloud.com",
+        "loyalbooks.com", "fireside.fm", "acast.com", "pinecast.com",
+        "podigee.com", "audioboom.com", "spotifyforpodcasters.com",
+    }
+)
+
 # "TLD" is actually a file extension: the email regex matched asset paths in
 # JS bundles (e.g. logo@2x.png parses as local="logo", domain="2x.png").
 ASSET_EXTENSIONS = frozenset(
@@ -106,6 +123,10 @@ def junk_email_reason(email: str) -> str | None:
         return "system_mailbox"
     if domain in VENDOR_DOMAINS or any(domain.endswith("." + v) for v in VENDOR_DOMAINS):
         return "vendor_domain"
+    if domain in PODCAST_HOST_DOMAINS or any(
+        domain.endswith("." + v) for v in PODCAST_HOST_DOMAINS
+    ):
+        return "podcast_host_platform"
     return None
 
 
