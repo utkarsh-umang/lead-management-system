@@ -36,20 +36,51 @@ router = APIRouter()
 WORKER_ALIVE_WINDOW = timedelta(minutes=2)
 
 
-def _queue_query(cost_mode: str, limit: int):
-    attempted = exists().where(
+# A transient blow-up (300s timeout, crawl/proxy error) is recorded as a
+# 'failed' attempt, but it is NOT a verdict — the finder never reached "no
+# email here". So a failed attempt must not retire a lead the way a real
+# found/not_found verdict does; the lead stays in the queue for another try.
+# The cap stops us paying forever to re-crawl a site that reliably breaks:
+# after this many failures at a tier, we give up on the lead at that tier.
+MAX_FAILED_RETRIES = 3
+
+
+def _eligible_where(cost_mode: str):
+    """The shared 'this lead still needs an attempt at this tier' predicate,
+    used by both the work queue and the pending-count. A lead is eligible when
+    it has no email, isn't held, has no terminal (found/not_found) verdict at
+    this tier, and hasn't burned through its failed-attempt budget."""
+    terminal = exists().where(
         EnrichmentAttempt.lead_id == MasterLead.id,
         EnrichmentAttempt.type == "email",
         EnrichmentAttempt.cost_mode == cost_mode,
         EnrichmentAttempt.superseded.is_(False),  # a superseded attempt re-queues the lead
+        EnrichmentAttempt.status.in_(("found", "not_found")),
+    )
+    failed_count = (
+        select(func.count())
+        .select_from(EnrichmentAttempt)
+        .where(
+            EnrichmentAttempt.lead_id == MasterLead.id,
+            EnrichmentAttempt.type == "email",
+            EnrichmentAttempt.cost_mode == cost_mode,
+            EnrichmentAttempt.superseded.is_(False),
+            EnrichmentAttempt.status == "failed",
+        )
+        .scalar_subquery()
     )
     return (
+        MasterLead.email.is_(None),
+        MasterLead.enrichment_hold.is_(False),  # held leads wait for Release
+        ~terminal,
+        failed_count < MAX_FAILED_RETRIES,
+    )
+
+
+def _queue_query(cost_mode: str, limit: int):
+    return (
         select(MasterLead)
-        .where(
-            MasterLead.email.is_(None),
-            MasterLead.enrichment_hold.is_(False),  # held leads wait for Release
-            ~attempted,
-        )
+        .where(*_eligible_where(cost_mode))
         .order_by(MasterLead.created_at)
         .limit(limit)
     )
@@ -220,21 +251,11 @@ async def get_enrichment_status(session: DbSession) -> EnrichmentStatusOut:
     worker = await _get_worker_state(session)
 
     async def _pending(cost_mode: str) -> int:
-        attempted = exists().where(
-            EnrichmentAttempt.lead_id == MasterLead.id,
-            EnrichmentAttempt.type == "email",
-            EnrichmentAttempt.cost_mode == cost_mode,
-            EnrichmentAttempt.superseded.is_(False),
-        )
         return (
             await session.execute(
                 select(func.count())
                 .select_from(MasterLead)
-                .where(
-                    MasterLead.email.is_(None),
-                    MasterLead.enrichment_hold.is_(False),
-                    ~attempted,
-                )
+                .where(*_eligible_where(cost_mode))
             )
         ).scalar_one()
 
