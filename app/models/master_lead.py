@@ -105,6 +105,12 @@ class MasterLead(Base, table=True):
     # that podcast listing. ──
     podcast_id: str | None = Field(default=None, index=True)
 
+    # Google Maps listing identity for Instascraper company leads. The place ID
+    # is stable across search-city tabs and URL variants, so it is the dedup
+    # anchor; the URL is retained separately as the human-usable listing link.
+    google_place_id: str | None = Field(default=None, index=True)
+    google_maps_url: str | None = Field(default=None)
+
     # ── YouTube-native identity (only when the lead IS a YouTube channel) ──
     youtube_channel_name: str | None = Field(default=None, index=True)
     youtube_channel_id: str | None = Field(default=None, index=True)

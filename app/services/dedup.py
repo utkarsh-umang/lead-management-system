@@ -35,6 +35,10 @@ Tiers, in order:
    podcast id (`pd_...`) is the anchor that keeps re-pulls from duplicating it.
    Exact match (one consistent id format). Only fires when a podcast_id is
    present.
+8. google_place_id — Google Maps-native identity for Instascraper company
+   listings. Search results can repeat across neighboring city tabs and Maps
+   URLs can vary, while the embedded place ID remains stable. Only fires when
+   a google_place_id is present.
 
 On a match: upsert, existing values win — the new source only fills fields
 that are currently NULL. On no match: insert a new MasterLead.
@@ -149,6 +153,18 @@ async def find_matching_lead(session: AsyncSession, canonical: dict) -> MasterLe
     if podcast_id:
         result = await session.execute(
             select(MasterLead).where(MasterLead.podcast_id == podcast_id)
+        )
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+    # Tier 8: Google Maps place ID — stable across URL variants and overlapping
+    # city searches. Indexed exact lookup, matching the platform-native tiers
+    # above without conflating a company listing with a person lead.
+    google_place_id = canonical.get("google_place_id")
+    if google_place_id:
+        result = await session.execute(
+            select(MasterLead).where(MasterLead.google_place_id == google_place_id)
         )
         existing = result.scalars().first()
         if existing:

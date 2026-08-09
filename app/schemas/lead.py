@@ -39,6 +39,8 @@ class LeadOut(BaseModel):
     phone: str | None
     company_name: str | None
     company_linkedin: str | None
+    google_place_id: str | None
+    google_maps_url: str | None
     # Lead-quality tag (podscan sets prospect/public_figure/host_or_regular);
     # NULL for sources that don't classify.
     lead_tag: str | None

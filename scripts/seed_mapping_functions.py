@@ -17,25 +17,36 @@ from app.db.session import AsyncSessionLocal  # noqa: E402
 from app.models.mapping_function import MappingFunction  # noqa: E402
 from app.services.mapping.fingerprint import compute_fingerprint  # noqa: E402
 from app.services.mapping.specs.apollo import MAPPING_SPEC as APOLLO_SPEC  # noqa: E402
-from app.services.mapping.specs.apollo import SOURCE_LABEL as APOLLO_LABEL  # noqa: E402
-from app.services.mapping.specs.apollo import REAL_ESTATE_HEADERS as APOLLO_RE_HEADERS  # noqa: E402
 from app.services.mapping.specs.apollo import MASTER_30K_HEADERS as APOLLO_30K_HEADERS  # noqa: E402
-from app.services.mapping.specs.youtube_consulti import MAPPING_SPEC as CONSULTI_SPEC  # noqa: E402
-from app.services.mapping.specs.youtube_consulti import SOURCE_LABEL as CONSULTI_LABEL  # noqa: E402
-from app.services.mapping.specs.youtube_tool import MAPPING_SPEC as TOOL_SPEC  # noqa: E402
-from app.services.mapping.specs.youtube_tool import SOURCE_LABEL as TOOL_LABEL  # noqa: E402
-from app.services.mapping.specs.podscan_guest import CANONICAL_HEADERS as PODSCAN_HEADERS  # noqa: E402
-from app.services.mapping.specs.podscan_guest import MAPPING_SPEC as PODSCAN_SPEC  # noqa: E402
-from app.services.mapping.specs.podscan_guest import SOURCE_LABEL as PODSCAN_LABEL  # noqa: E402
-from app.services.mapping.specs.apollo_lite import EXPECTED_HEADERS as APOLLO_LITE_HEADERS  # noqa: E402
+from app.services.mapping.specs.apollo import REAL_ESTATE_HEADERS as APOLLO_RE_HEADERS  # noqa: E402
+from app.services.mapping.specs.apollo import SOURCE_LABEL as APOLLO_LABEL  # noqa: E402
+from app.services.mapping.specs.apollo_lite import (
+    EXPECTED_HEADERS as APOLLO_LITE_HEADERS,  # noqa: E402
+)
 from app.services.mapping.specs.apollo_lite import MAPPING_SPEC as APOLLO_LITE_SPEC  # noqa: E402
 from app.services.mapping.specs.apollo_lite import SOURCE_LABEL as APOLLO_LITE_LABEL  # noqa: E402
 from app.services.mapping.specs.clutch import EXPECTED_HEADERS as CLUTCH_HEADERS  # noqa: E402
 from app.services.mapping.specs.clutch import MAPPING_SPEC as CLUTCH_SPEC  # noqa: E402
 from app.services.mapping.specs.clutch import SOURCE_LABEL as CLUTCH_LABEL  # noqa: E402
-from app.services.mapping.specs.podscan_host import EXPECTED_HEADERS as PODSCAN_HOST_HEADERS  # noqa: E402
+from app.services.mapping.specs.instascraper import (
+    EXPECTED_HEADERS as INSTASCRAPER_HEADERS,  # noqa: E402
+)
+from app.services.mapping.specs.instascraper import MAPPING_SPEC as INSTASCRAPER_SPEC  # noqa: E402
+from app.services.mapping.specs.instascraper import SOURCE_LABEL as INSTASCRAPER_LABEL  # noqa: E402
+from app.services.mapping.specs.podscan_guest import (
+    CANONICAL_HEADERS as PODSCAN_HEADERS,  # noqa: E402
+)
+from app.services.mapping.specs.podscan_guest import MAPPING_SPEC as PODSCAN_SPEC  # noqa: E402
+from app.services.mapping.specs.podscan_guest import SOURCE_LABEL as PODSCAN_LABEL  # noqa: E402
+from app.services.mapping.specs.podscan_host import (
+    EXPECTED_HEADERS as PODSCAN_HOST_HEADERS,  # noqa: E402
+)
 from app.services.mapping.specs.podscan_host import MAPPING_SPEC as PODSCAN_HOST_SPEC  # noqa: E402
 from app.services.mapping.specs.podscan_host import SOURCE_LABEL as PODSCAN_HOST_LABEL  # noqa: E402
+from app.services.mapping.specs.youtube_consulti import MAPPING_SPEC as CONSULTI_SPEC  # noqa: E402
+from app.services.mapping.specs.youtube_consulti import SOURCE_LABEL as CONSULTI_LABEL  # noqa: E402
+from app.services.mapping.specs.youtube_tool import MAPPING_SPEC as TOOL_SPEC  # noqa: E402
+from app.services.mapping.specs.youtube_tool import SOURCE_LABEL as TOOL_LABEL  # noqa: E402
 
 SEEDS = [
     (Path.home() / "Desktop" / "youtube-tool.csv", TOOL_LABEL, TOOL_SPEC),
@@ -211,6 +222,28 @@ async def main() -> None:
                 )
             )
             print(f"registered: {PODSCAN_HOST_LABEL} ({podscan_host_fp[:12]}...)")
+
+        # Instascraper Google Maps workbook exporter. Every city tab is combined
+        # into this fixed shape before upload; Google Place ID anchors duplicate
+        # listings across overlapping searches and future re-pulls.
+        instascraper_fp = compute_fingerprint(INSTASCRAPER_HEADERS)
+        instascraper_existing = (
+            await session.execute(
+                select(MappingFunction).where(MappingFunction.fingerprint == instascraper_fp)
+            )
+        ).scalars().first()
+        if instascraper_existing:
+            print(f"already registered: {INSTASCRAPER_LABEL} ({instascraper_fp[:12]}...)")
+        else:
+            session.add(
+                MappingFunction(
+                    fingerprint=instascraper_fp,
+                    source_label=INSTASCRAPER_LABEL,
+                    mapping_spec=INSTASCRAPER_SPEC,
+                    approved_at=datetime.utcnow(),
+                )
+            )
+            print(f"registered: {INSTASCRAPER_LABEL} ({instascraper_fp[:12]}...)")
 
         await session.commit()
 
