@@ -21,6 +21,8 @@ class ExportSelection(BaseModel):
     has_email: bool | None = None
     email_from_finder: bool | None = None
     lead_tag: str | None = None
+    classified_industry: str | None = None
+    icp_accepted: bool | None = None  # icp_confidence >= 60
 
 
 class ExportPreviewOut(BaseModel):

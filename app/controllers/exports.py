@@ -25,6 +25,7 @@ from app.schemas.export import (
     ExportPreviewOut,
     ExportSelection,
 )
+from app.controllers.classification import ICP_ACCEPT_THRESHOLD
 from app.services.contact_record import record_contact_event
 from app.services.lead_filters import email_from_finder_condition, search_condition
 
@@ -70,6 +71,11 @@ def _selection_query(selection: ExportSelection):
         query = query.where(email_from_finder_condition(selection.email_from_finder))
     if selection.lead_tag is not None:
         query = query.where(MasterLead.lead_tag == selection.lead_tag)
+    if selection.classified_industry is not None:
+        query = query.where(MasterLead.classified_industry == selection.classified_industry)
+    if selection.icp_accepted is not None:
+        accepted = MasterLead.icp_confidence >= ICP_ACCEPT_THRESHOLD
+        query = query.where(accepted if selection.icp_accepted else ~accepted)
     return query
 
 

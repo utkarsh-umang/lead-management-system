@@ -23,6 +23,7 @@ from app.schemas.lead import (
     SourceCount,
     SourceFileOut,
 )
+from app.controllers.classification import ICP_ACCEPT_THRESHOLD
 from app.services.lead_filters import email_from_finder_condition, search_condition
 
 router = APIRouter()
@@ -98,6 +99,8 @@ async def list_leads(
     finder_tried: bool | None = Query(default=None),
     email_from_finder: bool | None = Query(default=None),
     lead_tag: str | None = Query(default=None),
+    classified_industry: str | None = Query(default=None),
+    icp_accepted: bool | None = Query(default=None),
 ) -> LeadPage:
     query = select(MasterLead)
     count_query = select(func.count()).select_from(MasterLead)
@@ -141,6 +144,18 @@ async def list_leads(
 
     if lead_tag is not None:
         condition = MasterLead.lead_tag == lead_tag
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    if classified_industry is not None:
+        condition = MasterLead.classified_industry == classified_industry
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    if icp_accepted is not None:
+        # ICP-accept segment = paid-ads-agency score >= 60 (see classification.py).
+        accepted = MasterLead.icp_confidence >= ICP_ACCEPT_THRESHOLD
+        condition = accepted if icp_accepted else ~accepted
         query = query.where(condition)
         count_query = count_query.where(condition)
 
