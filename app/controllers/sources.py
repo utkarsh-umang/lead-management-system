@@ -1,6 +1,6 @@
 """Per-source detail — what the Dashboard's "Leads by Source" rows link to."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, update
 from sqlmodel import select
 from starlette import status
@@ -21,19 +21,53 @@ router = APIRouter()
     response_model=ReleaseResult,
     operation_id="release_enrichment_hold",
 )
-async def release_enrichment_hold(session: DbSession, source: str) -> ReleaseResult:
+async def release_enrichment_hold(
+    session: DbSession,
+    source: str,
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        description=(
+            "Release only a bounded tranche of this many leads (a budgeted "
+            "run). Picks the oldest never-attempted held leads first, so the "
+            "released count equals what the worker will actually process. "
+            "Omit to release the whole source."
+        ),
+    ),
+) -> ReleaseResult:
     """Lift the import-time hold for this source's leads — they join the
     email finder queue immediately (the worker is woken, not polled)."""
-    lead_ids_subq = (
+    source_lead_ids = (
         select(LeadSource.lead_id)
         .join(Batch, LeadSource.batch_id == Batch.id)
         .where(Batch.source == source)
     )
-    result = await session.execute(
-        update(MasterLead)
-        .where(MasterLead.id.in_(lead_ids_subq), MasterLead.enrichment_hold.is_(True))
-        .values(enrichment_hold=False)
-    )
+    if limit is not None:
+        # Budgeted run: release the N oldest held leads the finder hasn't
+        # touched yet, so N ~= leads actually enriched (already-attempted
+        # leads are terminal at their tier and would just sit un-processed,
+        # making the released count lie about the credit spend).
+        attempted = select(EnrichmentAttempt.lead_id).where(EnrichmentAttempt.type == "email")
+        tranche = (
+            select(MasterLead.id)
+            .where(
+                MasterLead.id.in_(source_lead_ids),
+                MasterLead.email.is_(None),
+                MasterLead.enrichment_hold.is_(True),
+                MasterLead.id.not_in(attempted),
+            )
+            .order_by(MasterLead.created_at)
+            .limit(limit)
+        )
+        result = await session.execute(
+            update(MasterLead).where(MasterLead.id.in_(tranche)).values(enrichment_hold=False)
+        )
+    else:
+        result = await session.execute(
+            update(MasterLead)
+            .where(MasterLead.id.in_(source_lead_ids), MasterLead.enrichment_hold.is_(True))
+            .values(enrichment_hold=False)
+        )
     # Commit before waking the long-poll — the woken request reads in a
     # fresh session, so the flag flip must be durable first.
     await session.commit()
