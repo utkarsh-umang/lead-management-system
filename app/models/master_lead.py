@@ -114,3 +114,9 @@ class MasterLead(Base, table=True):
     youtube_uploads_last_30d: int | None = Field(default=None)
     youtube_avg_views: int | None = Field(default=None)
     youtube_last_upload_date: date | None = Field(default=None)
+
+    # ── Outreach — the opening line to send this lead. Generated on demand by a
+    # named method (services/messages/), scoped to a source + list; latest run
+    # overwrites (regenerate-only, no per-lead editing). Read by the Instantly
+    # export. NULL until a generation is run for this lead. ──
+    email_to_send: str | None = Field(default=None)

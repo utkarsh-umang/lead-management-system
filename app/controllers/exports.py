@@ -36,7 +36,13 @@ router = APIRouter()
 # name-like field such a lead has, and {{firstName}} is the variable
 # templates actually use. Person-centric leads (Apollo) have the real
 # first_name/company_name, which win when present.
-CSV_HEADERS = ["email", "first_name", "company_name", "website", "youtube_url", "niche", "country"]
+# email_to_send carries the generated outreach opening line (services/messages/);
+# blank when no generation has been run for the lead. Instantly picks it up as
+# the {{email_to_send}} variable.
+CSV_HEADERS = [
+    "email", "first_name", "company_name", "website", "youtube_url", "niche", "country",
+    "email_to_send",
+]
 
 
 def _selection_query(selection: ExportSelection):
@@ -211,6 +217,7 @@ async def create_export(session: DbSession, body: ExportCreateIn) -> StreamingRe
                 lead.social_youtube or "",
                 lead.niche or lead.industry or "",
                 lead.country or "",
+                lead.email_to_send or "",
             ]
         )
     buffer.seek(0)
