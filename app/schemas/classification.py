@@ -31,9 +31,29 @@ class ClassificationResultsOut(BaseModel):
 
 class ClassificationStatus(BaseModel):
     batch_id: uuid.UUID
+    classify_requested: bool
     total_leads: int
     with_website: int
     classified: int
     pending: int  # has website, not yet classified
     icp_accepted: int  # icp_confidence >= 60
     by_industry: dict[str, int]  # classified_industry -> count
+
+
+class RequestClassificationIn(BaseModel):
+    batch_id: uuid.UUID
+
+
+class RequestClassificationOut(BaseModel):
+    batch_id: uuid.UUID
+    classify_requested: bool
+    pending: int
+
+
+class RequestedBatch(BaseModel):
+    """A list the worker should classify (requested + has pending leads)."""
+
+    batch_id: uuid.UUID
+    source: str
+    filename: str
+    pending: int

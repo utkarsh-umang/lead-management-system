@@ -31,3 +31,7 @@ class Batch(Base, table=True):
     # This stays a fixed historical fact about what this specific upload
     # actually contained.
     row_count_with_email: int = Field(default=0)
+
+    # Set by the UI "Classify" button; the ICP classification worker polls for
+    # requested lists with pending leads and drains them. "Stop" clears it.
+    classify_requested: bool = Field(default=False)

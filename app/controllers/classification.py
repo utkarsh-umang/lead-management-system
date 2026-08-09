@@ -24,11 +24,28 @@ from app.schemas.classification import (
     ClassificationResultsOut,
     ClassificationStatus,
     PendingLead,
+    RequestClassificationIn,
+    RequestClassificationOut,
+    RequestedBatch,
 )
 
 router = APIRouter()
 
 ICP_ACCEPT_THRESHOLD = 60
+
+
+async def _pending_count(session, batch_id: uuid.UUID) -> int:
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(MasterLead)
+            .where(
+                MasterLead.id.in_(_lead_ids_in_batch(batch_id)),
+                _has_website(),
+                MasterLead.classified_industry.is_(None),
+            )
+        )
+    ).scalar_one()
 
 
 def _has_website():
@@ -99,7 +116,7 @@ async def classification_results(
 @router.get("/status", response_model=ClassificationStatus, operation_id="classification_status")
 async def classification_status(session: DbSession, batch_id: uuid.UUID) -> ClassificationStatus:
     """Progress + the industry breakdown for a list."""
-    await _require_batch(session, batch_id)
+    batch = await _require_batch(session, batch_id)
     ids = _lead_ids_in_batch(batch_id)
 
     async def _count(*conds) -> int:
@@ -123,6 +140,7 @@ async def classification_status(session: DbSession, batch_id: uuid.UUID) -> Clas
 
     return ClassificationStatus(
         batch_id=batch_id,
+        classify_requested=batch.classify_requested,
         total_leads=total,
         with_website=with_website,
         classified=classified,
@@ -130,3 +148,49 @@ async def classification_status(session: DbSession, batch_id: uuid.UUID) -> Clas
         icp_accepted=icp_accepted,
         by_industry={row[0]: row[1] for row in industry_rows},
     )
+
+
+@router.post("/request", response_model=RequestClassificationOut, operation_id="request_classification")
+async def request_classification(
+    session: DbSession, body: RequestClassificationIn
+) -> RequestClassificationOut:
+    """Mark a list for classification — the worker will pick it up."""
+    batch = await _require_batch(session, body.batch_id)
+    batch.classify_requested = True
+    session.add(batch)
+    await session.commit()
+    return RequestClassificationOut(
+        batch_id=body.batch_id,
+        classify_requested=True,
+        pending=await _pending_count(session, body.batch_id),
+    )
+
+
+@router.post("/stop", response_model=RequestClassificationOut, operation_id="stop_classification")
+async def stop_classification(
+    session: DbSession, body: RequestClassificationIn
+) -> RequestClassificationOut:
+    """Clear the classify request — the worker stops picking up this list."""
+    batch = await _require_batch(session, body.batch_id)
+    batch.classify_requested = False
+    session.add(batch)
+    await session.commit()
+    return RequestClassificationOut(
+        batch_id=body.batch_id,
+        classify_requested=False,
+        pending=await _pending_count(session, body.batch_id),
+    )
+
+
+@router.get("/requested", response_model=list[RequestedBatch], operation_id="requested_classifications")
+async def requested_classifications(session: DbSession) -> list[RequestedBatch]:
+    """Lists the worker should classify: requested AND still have pending leads."""
+    batches = (
+        await session.execute(select(Batch).where(Batch.classify_requested.is_(True)))
+    ).scalars().all()
+    out: list[RequestedBatch] = []
+    for b in batches:
+        pending = await _pending_count(session, b.id)
+        if pending > 0:
+            out.append(RequestedBatch(batch_id=b.id, source=b.source, filename=b.filename, pending=pending))
+    return out
