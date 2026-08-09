@@ -28,6 +28,7 @@ from app.schemas.classification import (
     RequestClassificationOut,
     RequestedBatch,
 )
+from app.services import worker_pause
 
 router = APIRouter()
 
@@ -147,6 +148,7 @@ async def classification_status(session: DbSession, batch_id: uuid.UUID) -> Clas
         pending=pending,
         icp_accepted=icp_accepted,
         by_industry={row[0]: row[1] for row in industry_rows},
+        paused=worker_pause.is_paused(),
     )
 
 
@@ -185,6 +187,10 @@ async def stop_classification(
 @router.get("/requested", response_model=list[RequestedBatch], operation_id="requested_classifications")
 async def requested_classifications(session: DbSession) -> list[RequestedBatch]:
     """Lists the worker should classify: requested AND still have pending leads."""
+    # Globally paused (user closed the laptop): hand the worker nothing so it
+    # idles instead of crawling against a sleeping machine.
+    if worker_pause.is_paused():
+        return []
     batches = (
         await session.execute(select(Batch).where(Batch.classify_requested.is_(True)))
     ).scalars().all()

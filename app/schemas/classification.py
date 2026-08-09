@@ -38,6 +38,7 @@ class ClassificationStatus(BaseModel):
     pending: int  # has website, not yet classified
     icp_accepted: int  # icp_confidence >= 60
     by_industry: dict[str, int]  # classified_industry -> count
+    paused: bool = False  # global worker pause (halts the classifier mid-list)
 
 
 class RequestClassificationIn(BaseModel):

@@ -28,6 +28,7 @@ from app.schemas.enrichment import (
     RequeueIn,
 )
 from app.services import enrichment_signals as signals
+from app.services import worker_pause
 from app.services.mapping.email_junk import is_junk_email
 
 router = APIRouter()
@@ -156,7 +157,10 @@ async def wait_enrichment_queue(
 
         async with AsyncSessionLocal() as session:
             worker_state = await _get_worker_state(session)
-            paused = bool(worker_state and worker_state.paused)
+            # Two independent gates: the worker's own hard-block pause (DB) and
+            # the user's global "closing the laptop" pause (Redis). Either one
+            # holds the queue shut.
+            paused = bool(worker_state and worker_state.paused) or worker_pause.is_paused()
             leads = []
             if not paused:
                 leads = (await session.execute(_queue_query(cost_mode, limit))).scalars().all()
