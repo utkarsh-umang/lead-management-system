@@ -120,3 +120,14 @@ class MasterLead(Base, table=True):
     # overwrites (regenerate-only, no per-lead editing). Read by the Instantly
     # export. NULL until a generation is run for this lead. ──
     email_to_send: str | None = Field(default=None)
+
+    # ── Website-content classification (ai-agents ICP classifier). Inferred from
+    # the actual site, so more accurate than the source-provided `industry`.
+    # classified_industry = controlled-taxonomy bucket (LLM may propose a new
+    # label when none fit); icp_confidence = 0-100 paid-ads-agency score (accept
+    # segment >= 60). Both indexed — they ARE the segment keys. NULL until run. ──
+    classified_industry: str | None = Field(default=None, index=True)
+    icp_confidence: int | None = Field(default=None, index=True)
+    icp_reasoning: str | None = Field(default=None)
+    icp_source: str | None = Field(default=None)  # crawl | serper
+    icp_classified_at: datetime | None = Field(default=None)
