@@ -8,7 +8,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlmodel import select
 from starlette import status
 
@@ -73,6 +73,8 @@ def _selection_query(selection: ExportSelection):
         query = query.where(MasterLead.lead_tag == selection.lead_tag)
     if selection.classified_industry is not None:
         query = query.where(MasterLead.classified_industry == selection.classified_industry)
+    if selection.classified_industries:
+        query = query.where(MasterLead.classified_industry.in_(selection.classified_industries))
     if selection.icp_accepted is not None:
         accepted = MasterLead.icp_confidence >= ICP_ACCEPT_THRESHOLD
         query = query.where(accepted if selection.icp_accepted else ~accepted)
@@ -110,6 +112,19 @@ async def list_exports(session: DbSession) -> list[ExportOut]:
         (await session.execute(select(Export).order_by(Export.created_at.desc()))).scalars().all()
     )
     return [ExportOut(**e.model_dump()) for e in rows]
+
+
+@router.delete("/{export_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="delete_export")
+async def delete_export(session: DbSession, export_id: uuid.UUID) -> None:
+    """Remove an export event created in error / never actually sent. Drops its
+    membership rows too, so its leads stop counting as already-contacted and
+    become exportable again. Does not touch the leads themselves."""
+    export = await session.get(Export, export_id)
+    if export is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Export {export_id} not found")
+    await session.execute(delete(ExportLead).where(ExportLead.export_id == export_id))
+    await session.execute(delete(Export).where(Export.id == export_id))
+    await session.commit()
 
 
 @router.get("/{export_id}/leads", response_model=ExportLeadsPage, operation_id="get_export_leads")

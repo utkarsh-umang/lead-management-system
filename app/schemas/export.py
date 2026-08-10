@@ -22,6 +22,10 @@ class ExportSelection(BaseModel):
     email_from_finder: bool | None = None
     lead_tag: str | None = None
     classified_industry: str | None = None
+    # Multi-select variant: match a lead whose industry is ANY of these. Lets a
+    # curated set of buckets (e.g. every marketing/lead-gen label) export in one
+    # pass instead of one industry at a time.
+    classified_industries: list[str] | None = None
     icp_accepted: bool | None = None  # icp_confidence >= 60
 
 
