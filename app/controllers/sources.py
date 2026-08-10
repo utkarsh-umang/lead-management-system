@@ -10,7 +10,7 @@ from app.models.batch import Batch
 from app.models.enrichment_attempt import EnrichmentAttempt
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
-from app.schemas.source import BatchSummaryOut, ReleaseResult, SourceDetail
+from app.schemas.source import BatchSummaryOut, HoldResult, ReleaseResult, SourceDetail
 from app.services.enrichment_signals import notify_work
 
 router = APIRouter()
@@ -74,6 +74,34 @@ async def release_enrichment_hold(
     if result.rowcount:
         notify_work()
     return ReleaseResult(released=result.rowcount or 0)
+
+
+@router.post(
+    "/{source}/hold-enrichment",
+    response_model=HoldResult,
+    operation_id="hold_enrichment",
+)
+async def hold_enrichment(session: DbSession, source: str) -> HoldResult:
+    """Re-hold this source's not-yet-found leads — pull them out of the finder
+    queue so no more credits are spent, leaving them parked for a later
+    Release. The counterpart to release-enrichment; only leads still without an
+    email are affected (found ones are done)."""
+    lead_ids_subq = (
+        select(LeadSource.lead_id)
+        .join(Batch, LeadSource.batch_id == Batch.id)
+        .where(Batch.source == source)
+    )
+    result = await session.execute(
+        update(MasterLead)
+        .where(
+            MasterLead.id.in_(lead_ids_subq),
+            MasterLead.email.is_(None),
+            MasterLead.enrichment_hold.is_(False),
+        )
+        .values(enrichment_hold=True)
+    )
+    await session.commit()
+    return HoldResult(held=result.rowcount or 0)
 
 
 @router.get("/{source}", response_model=SourceDetail, operation_id="get_source_detail")

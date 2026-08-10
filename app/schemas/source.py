@@ -23,6 +23,10 @@ class ReleaseResult(BaseModel):
     released: int
 
 
+class HoldResult(BaseModel):
+    held: int
+
+
 class SourceDetail(BaseModel):
     source: str
     lead_count: int
