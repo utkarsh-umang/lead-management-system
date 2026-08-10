@@ -27,7 +27,12 @@ def pause_state() -> dict:
     v = cache.get(_KEY)
     if not v:
         return {"paused": False, "since": None, "reason": None}
-    return {"paused": True, "since": v.get("since"), "reason": v.get("reason")}
+    since = v.get("since")
+    # The cache's JSON loader revives ISO strings as datetimes; hand back a
+    # plain string so it matches the response schema.
+    if isinstance(since, datetime):
+        since = since.isoformat()
+    return {"paused": True, "since": since, "reason": v.get("reason")}
 
 
 def is_paused() -> bool:
