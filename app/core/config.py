@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     GCP_PROJECT_ID: str | None = None
     GCP_SECRET_NAME: str | None = None
 
+    # ── Message generation — LLM methods (transcript_opener) ──
+    # Optional: a method that needs a key it doesn't have reports every lead as
+    # skipped (unconfigured) rather than erroring, so the registry stays usable.
+    OPENAI_API_KEY: str | None = None
+    PODSCAN_API_KEY: str | None = None
+    PODSCAN_API_BASE: str = "https://podscan.fm/api/v1"
+    MESSAGE_LLM_MODEL: str = "gpt-4o-mini"
+
     @property
     def DATABASE_URL(self) -> str:
         return (

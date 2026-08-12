@@ -15,10 +15,21 @@ user ran by hand for the Podscan Host list.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Awaitable, Callable
 
 from app.models.master_lead import MasterLead
+
+
+@dataclass(frozen=True)
+class MessageContext:
+    """What an async method sees. `provenance` is the lead's raw source row
+    (raw_rows.raw_data) — the per-appearance fields the canonical MasterLead
+    doesn't carry, e.g. episode_id / speaker_label for the Podscan guest list.
+    Loaded by the controller only for methods that set `needs_provenance`."""
+
+    lead: MasterLead
+    provenance: dict
 
 
 @dataclass(frozen=True)
@@ -26,9 +37,21 @@ class MessageMethod:
     name: str
     label: str
     description: str
-    kind: str  # "deterministic" | "llm" | "scrape" — only deterministic exists today
+    kind: str  # "deterministic" | "llm" | "scrape"
     required_fields: list[str]  # canonical MasterLead fields the method reads
-    generate: Callable[[MasterLead], str | None]
+    # A method is EITHER deterministic (sync `generate`, run inline) OR llm/scrape
+    # (async `agenerate`, run with bounded concurrency + external I/O). Exactly
+    # one is set.
+    generate: Callable[[MasterLead], str | None] | None = None
+    agenerate: Callable[["MessageContext"], Awaitable[str | None]] | None = None
+    # llm/scrape methods that read the raw source row set this so the controller
+    # loads raw_data alongside each lead.
+    needs_provenance: bool = False
+    provenance_fields: list[str] = field(default_factory=list)
+
+    @property
+    def is_async(self) -> bool:
+        return self.agenerate is not None
 
 
 def _podcast_name_opener(lead: MasterLead) -> str | None:
@@ -48,6 +71,9 @@ def _podcast_name_opener(lead: MasterLead) -> str | None:
     return f'Checked out your podcast "{name}", really good stuff!'
 
 
+from app.services.messages.transcript_opener import generate as _transcript_opener
+
+
 MESSAGE_METHODS: dict[str, MessageMethod] = {
     "podcast_name_opener": MessageMethod(
         name="podcast_name_opener",
@@ -60,6 +86,23 @@ MESSAGE_METHODS: dict[str, MessageMethod] = {
         kind="deterministic",
         required_fields=["company_name"],
         generate=_podcast_name_opener,
+    ),
+    "transcript_opener": MessageMethod(
+        name="transcript_opener",
+        label="Episode transcript opener",
+        description=(
+            "Personalized opener from the actual episode the guest was on: pulls "
+            "the Podscan transcript by episode_id, isolates the guest's own spoken "
+            "lines (by speaker label), and writes a specific line about something "
+            "they really said. Best for the Podscan Guest list. Needs Podscan + "
+            "OpenAI keys; leads with no episode/transcript are skipped. Slower and "
+            "rate-limited — run on a bounded list."
+        ),
+        kind="llm",
+        required_fields=["first_name"],
+        agenerate=_transcript_opener,
+        needs_provenance=True,
+        provenance_fields=["episode_id", "speaker_label", "podcast_name", "episode_title"],
     ),
 }
 
