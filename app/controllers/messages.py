@@ -22,10 +22,13 @@ from starlette import status
 from app.core.config import config
 from app.core.db_dep import DbSession
 from app.models.batch import Batch
+from app.models.export import ExportLead
 from app.models.lead_source import LeadSource
 from app.models.master_lead import MasterLead
 from app.models.raw_row import RawRow
 from app.schemas.message import (
+    FetchTranscriptsIn,
+    FetchTranscriptsResult,
     GenerateMessagesIn,
     GenerateMessagesResult,
     MessagePreviewOut,
@@ -38,6 +41,7 @@ from app.services.messages.methods import (
     MessageMethod,
     get_method,
 )
+from app.services.messages.transcript_store import fetch_and_store
 
 router = APIRouter()
 
@@ -241,3 +245,36 @@ async def generate_messages(session: DbSession, body: GenerateMessagesIn) -> Gen
         generated=generated,
         skipped=len(leads) - generated,
     )
+
+
+@router.post("/transcripts", response_model=FetchTranscriptsResult, operation_id="fetch_transcripts")
+async def fetch_transcripts(session: DbSession, body: FetchTranscriptsIn) -> FetchTranscriptsResult:
+    """Bulk-fetch Podscan episode transcripts into `episode_transcript` for every
+    lead in the list. Deduped by episode (one API call per unique episode, fanned
+    out to all its guests), idempotent (already-cached leads skipped), and bounded
+    by `max_episodes` for the rate-limited trial key. Only needs the Podscan key —
+    no LLM — so the opener can later read transcripts locally instead of re-fetching."""
+    if not config.PODSCAN_API_KEY:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Transcript fetch needs PODSCAN_API_KEY in the backend environment.",
+        )
+    leads = await _leads_for_list(session, body.source, body.batch_id)
+    if body.export_id is not None:
+        member_ids = set(
+            (
+                await session.execute(
+                    select(ExportLead.lead_id).where(ExportLead.export_id == body.export_id)
+                )
+            ).scalars().all()
+        )
+        if not member_ids:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND, f"No export {body.export_id} (or it has no leads)"
+            )
+        leads = [lead for lead in leads if lead.id in member_ids]
+    provenance = await _provenance_for_batch(session, body.batch_id)
+    result = await fetch_and_store(
+        session, leads, provenance, max_episodes=body.max_episodes
+    )
+    return FetchTranscriptsResult(**result.__dict__)

@@ -127,6 +127,13 @@ class MasterLead(Base, table=True):
     # export. NULL until a generation is run for this lead. ──
     email_to_send: str | None = Field(default=None)
 
+    # ── Cached Podscan episode transcript for a podcast-guest lead. Transcripts
+    # are per-EPISODE — the fetch dedups on episode_id and writes the same
+    # transcript onto every guest of that episode (see transcript_store.py). Lets
+    # `transcript_opener` read locally instead of re-hitting the rate-limited
+    # Podscan API. NULL until a fetch is run for the lead's list. ──
+    episode_transcript: str | None = Field(default=None)
+
     # ── Website-content classification (ai-agents ICP classifier). Inferred from
     # the actual site, so more accurate than the source-provided `industry`.
     # classified_industry = controlled-taxonomy bucket (LLM may propose a new

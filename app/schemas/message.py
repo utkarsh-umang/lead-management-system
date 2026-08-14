@@ -46,3 +46,28 @@ class GenerateMessagesResult(BaseModel):
     total_leads: int
     generated: int  # leads whose email_to_send was written
     skipped: int  # leads the method returned None for (left unchanged)
+
+
+class FetchTranscriptsIn(BaseModel):
+    """Bulk-fetch Podscan episode transcripts for a list into
+    master_leads.episode_transcript (deduped by episode)."""
+
+    source: str
+    batch_id: uuid.UUID
+    # Optionally restrict to the leads in a specific export (e.g. the top-25
+    # list). Provenance (episode_id) still comes from the batch's raw rows; this
+    # just narrows WHICH leads get a transcript. None = the whole list.
+    export_id: uuid.UUID | None = Field(default=None)
+    # Cap the number of UNIQUE EPISODES fetched — i.e. the number of Podscan API
+    # calls. The rate-limit safety valve: a small cap (e.g. 50) is a bounded
+    # trial run; None fetches every uncached episode in the list.
+    max_episodes: int | None = Field(default=None, ge=1)
+
+
+class FetchTranscriptsResult(BaseModel):
+    total_leads: int
+    leads_with_episode: int  # leads carrying an episode_id (fetch candidates)
+    unique_episodes: int  # distinct episodes among the uncached candidates
+    episodes_fetched: int  # episodes we got a transcript for
+    leads_written: int  # leads whose episode_transcript was set
+    stopped_paid_plan: bool  # key's plan can't serve transcripts — run halted early

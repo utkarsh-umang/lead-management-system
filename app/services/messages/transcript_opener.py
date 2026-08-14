@@ -18,16 +18,13 @@ unconfigured key or a missing transcript can't break a batch run.
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import re
 
 import httpx
 
 from app.core.config import config
+from app.services.messages.podscan import PAID_PLAN_REQUIRED, fetch_transcript
 
-_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-       "(KHTML, like Gecko) Chrome/121.0 Safari/537.36")
 _TS_RX = re.compile(r"\[\d\d:\d\d:\d\d\.\d+\s*-->\s*\d\d:\d\d:\d\d\.\d+\]")
 
 _SYS = (
@@ -55,35 +52,6 @@ def _guest_turns(transcript: str, speaker_label: str | None) -> str:
         if parts[i] == speaker_label
     ]
     return " ".join(turns)
-
-
-async def _podscan_transcript(client: httpx.AsyncClient, episode_id: str) -> str | None:
-    """Full episode transcript, honoring the API's per-minute rate limit
-    ('Retry after N second(s)'). None = no transcript / unrecoverable."""
-    url = f"{config.PODSCAN_API_BASE}/episodes/{episode_id}"
-    headers = {"Authorization": f"Bearer {config.PODSCAN_API_KEY}", "User-Agent": _UA}
-    for _ in range(8):
-        try:
-            r = await client.get(url, headers=headers, timeout=60)
-            # strict=False: some transcripts carry raw control chars that would
-            # break strict JSON parsing.
-            data = json.loads(r.text, strict=False)
-        except Exception:
-            await asyncio.sleep(1.5)
-            continue
-        msg = data.get("message", "") if isinstance(data, dict) else ""
-        if msg:
-            low = msg.lower()
-            if "paid plan" in low:
-                return None
-            if "limit" in low:
-                m = re.search(r"retry after (\d+)", low)
-                await asyncio.sleep((int(m.group(1)) if m else 6) + 1)
-                continue
-        ep = data.get("episode", data) if isinstance(data, dict) else {}
-        t = ep.get("episode_transcript") if isinstance(ep, dict) else None
-        return t if isinstance(t, str) and len(t) > 200 else None
-    return None
 
 
 async def _llm_opener(client: httpx.AsyncClient, user: str) -> str | None:
@@ -118,8 +86,12 @@ async def generate(ctx) -> str | None:
     speaker = (prov.get("speaker_label") or "").strip()
 
     async with httpx.AsyncClient() as client:
-        transcript = await _podscan_transcript(client, episode_id)
+        # Prefer the transcript already cached on the lead (bulk-fetched by
+        # transcript_store); only hit the rate-limited API when it's missing.
+        transcript = (ctx.lead.episode_transcript or "").strip() or None
         if not transcript:
+            transcript = await fetch_transcript(client, episode_id)
+        if not transcript or transcript == PAID_PLAN_REQUIRED:
             return None
         guest = _guest_turns(transcript, speaker)
         if len(guest) >= 600:
