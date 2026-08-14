@@ -23,7 +23,7 @@ import re
 import httpx
 
 from app.core.config import config
-from app.services.messages.podscan import PAID_PLAN_REQUIRED, fetch_transcript
+from app.services.messages.podscan import STOP_SENTINELS, fetch_transcript
 
 _TS_RX = re.compile(r"\[\d\d:\d\d:\d\d\.\d+\s*-->\s*\d\d:\d\d:\d\d\.\d+\]")
 
@@ -91,7 +91,7 @@ async def generate(ctx) -> str | None:
         transcript = (ctx.lead.episode_transcript or "").strip() or None
         if not transcript:
             transcript = await fetch_transcript(client, episode_id)
-        if not transcript or transcript == PAID_PLAN_REQUIRED:
+        if not transcript or transcript in STOP_SENTINELS:
             return None
         guest = _guest_turns(transcript, speaker)
         if len(guest) >= 600:

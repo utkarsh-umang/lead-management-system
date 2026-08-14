@@ -70,4 +70,5 @@ class FetchTranscriptsResult(BaseModel):
     unique_episodes: int  # distinct episodes among the uncached candidates
     episodes_fetched: int  # episodes we got a transcript for
     leads_written: int  # leads whose episode_transcript was set
-    stopped_paid_plan: bool  # key's plan can't serve transcripts — run halted early
+    stopped_capped: bool  # halted early because the key ran out of capacity
+    stop_reason: str | None = None  # which cap (daily-limit / paid-plan) — None if not capped

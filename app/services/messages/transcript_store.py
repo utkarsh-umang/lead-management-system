@@ -19,7 +19,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.models.master_lead import MasterLead
-from app.services.messages.podscan import PAID_PLAN_REQUIRED, fetch_transcript
+from app.services.messages.podscan import STOP_SENTINELS, fetch_transcript
 
 
 @dataclass
@@ -29,7 +29,8 @@ class TranscriptFetchResult:
     unique_episodes: int      # distinct episodes among them (== API calls attempted)
     episodes_fetched: int     # episodes we actually got a transcript for
     leads_written: int        # leads whose episode_transcript we set
-    stopped_paid_plan: bool   # the key's plan can't serve transcripts — run halted
+    stopped_capped: bool      # halted early because the key ran out of capacity
+    stop_reason: str | None   # which cap ('daily-limit-exceeded' / 'paid-plan-required')
 
 
 async def fetch_and_store(
@@ -61,13 +62,16 @@ async def fetch_and_store(
 
     episodes_fetched = 0
     leads_written = 0
-    stopped_paid_plan = False
+    stop_reason: str | None = None
 
     async with httpx.AsyncClient() as client:
         for episode_id in episode_ids:
             transcript = await fetch_transcript(client, episode_id)
-            if transcript == PAID_PLAN_REQUIRED:
-                stopped_paid_plan = True
+            if transcript in STOP_SENTINELS:
+                # Key is out of capacity (daily quota / plan too low) — halt so we
+                # don't grind through the rest getting nothing. Already-written
+                # episodes are committed; the run resumes idempotently later.
+                stop_reason = transcript
                 break
             if not transcript:
                 continue
@@ -76,8 +80,8 @@ async def fetch_and_store(
                 lead.episode_transcript = transcript
                 session.add(lead)
                 leads_written += 1
-
-    await session.commit()
+            # Commit per episode so progress survives an interruption mid-run.
+            await session.commit()
 
     return TranscriptFetchResult(
         total_leads=len(leads),
@@ -85,5 +89,6 @@ async def fetch_and_store(
         unique_episodes=len(by_episode),
         episodes_fetched=episodes_fetched,
         leads_written=leads_written,
-        stopped_paid_plan=stopped_paid_plan,
+        stopped_capped=stop_reason is not None,
+        stop_reason=stop_reason,
     )
